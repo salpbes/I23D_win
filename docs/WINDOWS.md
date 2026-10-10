@@ -26,6 +26,31 @@ C++ tools installed yet.
 - **Option A (WSL2) for Blackwell:** https://github.com/Creepybits/trellis2-blackwell-wsl
   (CUDA 13, xformers, tested only on an RTX 5090 32 GB; known WSL memory crashes). Fallback.
 
+### First test on this PC: Option D works (2026-10-10)
+
+| | |
+|---|---|
+| ComfyUI | v0.39.0 portable, NVIDIA build (Python 3.13, PyTorch 2.10 + CUDA 12.8, includes `sm_120`) |
+| Models (~9.2 GB, no Hugging Face token needed) | `trellis_2_int8_convrot`, TRELLIS.2 shape + texture VAEs, `dino_v3_L_naf_fp32`, `birefnet` (+ `moge_2_vitl_normal_fp16`, only used by Pixal3D) |
+| Picture | the template's `viking_wolf_rune_axe.png` |
+| Detail | 1024 (the lowest this ComfyUI allows; the template uses 1536) |
+| Time | **245 s** including first model load |
+| Peak VRAM | **11.5 GB of 16 GB** |
+| Result | 65 MB `.glb`, 691k triangles, UV-mapped, 4096² base colour + PBR textures |
+| Add-on *Clean* (unchanged code, Blender 5.2.2) | 691k → 15k triangles, watertight, on the ground, upright |
+| Add-on colours | fell back to Clay: no colour layer, the colours are in textures (see §5) |
+
+How the run was made:
+- `scripts/comfy_workflow_to_api.py` turns the editor template into the API format
+  (`POST /prompt`), using the node definitions from `/object_info`.
+- The template's Pixal3D/TRELLIS.2 switch must be resolved **before** sending. ComfyUI checks both
+  sides, so it rejects the run if the Pixal3D model isn't downloaded. After picking TRELLIS.2, keep
+  only the nodes that feed `Save3DAdvanced` (45 of 63 nodes).
+- The `.glb` lands in `ComfyUI/output/3d/`; `/history/<prompt_id>` gives its file name.
+
+Next for the add-on: a ComfyUI backend in place of `generate.py` (upload picture, send the
+workflow, read progress, fetch the `.glb`), and "bake from texture" so *TRELLIS colours* works.
+
 ---
 
 ## 1. What runs where
