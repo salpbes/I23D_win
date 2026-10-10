@@ -59,6 +59,10 @@ class I23D_Settings(bpy.types.PropertyGroup):
     colour_match: FloatProperty(
         name="Match photo colours", subtype="FACTOR", min=0.0, max=1.0, default=0.0,
         description="0 = pure TRELLIS.2 colours, 1 = brightness and tint fully matched to the picture")
+    surface_maps: BoolProperty(
+        name="Metal, roughness & bumps", default=True,
+        description="With TRELLIS colours from ComfyUI: also bake the original's metal/roughness "
+                    "texture and a normal map of its fine detail (adds a few seconds to Clean)")
     texture_size: EnumProperty(
         name="Texture size",
         items=[("1024", "1024", "Small file, mobile"), ("2048", "2048", "Good default"), ("4096", "4096", "Hero assets, big file")],

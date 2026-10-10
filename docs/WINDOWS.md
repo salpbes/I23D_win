@@ -54,7 +54,8 @@ upload the picture, send the workflow, follow progress over a WebSocket, fetch t
 ambient-occlusion and normal-map bakes (72 s, unused by the add-on) are left out.
 Measured with the Generate button in Blender 5.2.2: **2:43** from pressing Generate to a finished
 model, *including* starting ComfyUI and loading the models from disk; the 15k clean + colour bake
-then takes about 15 s more. Peak graphics memory 11.2 GB.
+then takes about 17 s more (3.5 s of it for the metal/roughness and normal maps, at 2048;
+they also take the 15k .glb from 5.5 to 14.1 MB). Peak graphics memory 11.2 GB.
 
 ---
 

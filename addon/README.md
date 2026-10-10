@@ -20,6 +20,8 @@ computer (127.0.0.1) and is started with `--offline`.
 2. **Clean for games** – choose a triangle budget, press **Clean Selected**.
    Colours default to **TRELLIS colours**: TRELLIS.2's colour texture is baked onto the light model.
    **Match photo colours**: 0 = pure TRELLIS colours, 1 = brightness/tint matched to the picture.
+   **Metal, roughness & bumps** (on by default): also bakes the original's metal/roughness texture
+   and a normal map of its fine detail, so metal parts keep their shine in the exported .glb.
    Plain presets (Clay, Gold, …) are still there.
    To see textures, switch the viewport to **Material Preview**.
    The original is kept hidden, so you can re-clean at another size (e.g. `axe_15k`, `axe_5k`).

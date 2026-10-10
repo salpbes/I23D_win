@@ -44,6 +44,11 @@ own object (`name_60k`, `name_15k`, `name_5k`).
   **baked** (copied with ray tracing) onto a new texture of the light model.
   *Match photo colours* slider: 0 = pure TRELLIS colours, 1 = brightness/tint pulled toward the
   picture (TRELLIS colours often look washed-out).
+  *Metal, roughness & bumps* (on by default): the original from ComfyUI also has a
+  metal/roughness texture and far more surface detail than the light model. Both are baked too:
+  a metallicRoughness texture and a normal map (the small bumps the light model can't hold as
+  triangles). The .glb then has three textures instead of one. Untick it for a single colour
+  texture and a plain, non-metal surface.
 - **Plain presets:** Clay, Gold, Silver, Bronze, Stone, Wood, Plastic.
 - The 🎨 button next to *Clean Selected* re-applies colours without re-cleaning.
 - **Tip:** Blender's *Solid* view hides textures. Switch the viewport to **Material Preview**
@@ -87,5 +92,5 @@ own object (`name_60k`, `name_15k`, `name_5k`).
   ComfyUI_windows_portable\   ComfyUI + its Python + TRELLIS.2 models (scripts\install_comfyui.ps1)
   output\                     <name>.glb originals, <name>_log.txt, comfyui_log.txt
     game-ready\               exported game models
-    textures\                 baked colour textures (.png)
+    textures\                 baked textures (.png): _basecolor, _metallicroughness, _normal
 ```

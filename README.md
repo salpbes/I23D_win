@@ -7,7 +7,7 @@ everything **locally** on a Windows PC with an NVIDIA graphics card and Microsof
 ```
 picture ──► TRELLIS.2 in a local ComfyUI (detailed, textured model)
         ──► Clean (5k / 15k / 60k triangles, closed solid)
-        ──► TRELLIS colours baked into one texture ──► .glb for three.js / Godot / Unity
+        ──► TRELLIS colours, metal/roughness + normal maps baked ──► .glb for three.js / Godot / Unity
 ```
 
 | | |
@@ -54,7 +54,7 @@ addon/image_to_game_asset/   the Blender add-on (one job per file, see __init__.
   trellis_runner.py            start ComfyUI, send the TRELLIS.2 job, read progress (no Blender code)
   workflows/                   the TRELLIS.2 ComfyUI workflow + the model files it needs
   cleanup.py                   messy AI mesh → light, closed game mesh
-  baking.py                    bake TRELLIS.2's colours onto the game mesh (+ photo colour match)
+  baking.py                    bake TRELLIS.2's colours, metal/roughness + normal maps onto the game mesh (+ photo colour match)
   materials.py / exporter.py   material presets / .glb export
   pipeline.py                  glue used by the buttons
   properties.py / preferences.py / operators.py / ui.py   settings, buttons, panel

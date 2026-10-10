@@ -22,7 +22,7 @@
 | The official TRELLIS.2 install fails on RTX 50 cards | It pins PyTorch 2.6 + CUDA 12.4, which don't support Blackwell (`sm_120`) | Use ComfyUI's built-in TRELLIS.2: its portable build ships PyTorch 2.10 + CUDA 12.8 with `sm_120` |
 | ComfyUI rejects the template workflow over a missing `pixal3d_int8_convrot` | The template switches between Pixal3D and TRELLIS.2, and ComfyUI checks both sides | `make_addon_workflow.py` resolves the switch to TRELLIS.2 and keeps only what the `.glb` needs |
 | Template values land in the wrong inputs | Editor workflows store widget values as a list; "dynamic combo" inputs add extra values | `comfy_workflow_to_api.py` reads `/object_info` and expands dynamic combos as `name.option` |
-| ComfyUI's ambient-occlusion and normal-map bakes take 72 of 182 s | The add-on bakes only the base colour onto its own mesh | Left out of the add-on's workflow |
+| ComfyUI's ambient-occlusion and normal-map bakes take 72 of 182 s | The add-on bakes its own maps (colour, metal/roughness, normal) from the detailed original onto its light mesh | Left out of the add-on's workflow |
 | Windows PowerShell 5.1 stops on Blender warnings | It turns a native program's stderr into errors | `run_tests.ps1` relaxes the error setting around Blender calls |
 
 ## Logs

@@ -6,6 +6,11 @@ Cleaning rebuilds the shape, which drops those colours, so we copy them across:
 for every pixel of the game mesh's texture, Blender looks out from the game surface,
 finds the detailed original, and takes its colour ("selected to active" bake).
 
+A ComfyUI original also has metallic/roughness textures and far more surface detail than the
+game mesh. With surface maps on, those are carried over too: a metallicRoughness texture (glTF's
+channel order: green = roughness, blue = metallic) and a tangent-space normal map baked from the
+detailed shape, so metal parts keep their shine and small bumps stay visible.
+
 Optional colour matching shifts the overall brightness and tint toward the photo
 (0 = pure TRELLIS.2 colours, 1 = fully matched).
 """
@@ -71,12 +76,16 @@ def colour_layer(obj) -> str | None:
     return names[0] if names else None
 
 
-def _base_colour_socket(material):
-    """The Principled BSDF's Base Color input of `material`, or None."""
+def _bsdf_socket(material, name: str):
+    """The Principled BSDF's `name` input of `material` (e.g. "Base Color"), or None."""
     if material is None or material.node_tree is None:
         return None
     bsdf = next((n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
-    return bsdf.inputs["Base Color"] if bsdf else None
+    return bsdf.inputs[name] if bsdf else None
+
+
+def _base_colour_socket(material):
+    return _bsdf_socket(material, "Base Color")
 
 
 def has_texture_colours(obj) -> bool:
@@ -184,17 +193,24 @@ def _emit_material(layer: str) -> bpy.types.Material:
     return mat
 
 
-def _emission_copy(material) -> bpy.types.Material:
-    """A temporary copy of `material` that shows its base colour as light (for the EMIT bake)."""
+def _light_copy(material, suffix: str):
+    """A temporary copy of `material` whose surface is an Emission node (for EMIT bakes).
+    Returns (copy, its node tree, the emission node)."""
     mat = material.copy()
-    mat.name = f"I23D_bake_{material.name}"
+    mat.name = f"I23D_bake_{material.name}{suffix}"
     nt = mat.node_tree
-    socket = _base_colour_socket(mat)
     for node in [n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"]:
         nt.nodes.remove(node)
     em = nt.nodes.new("ShaderNodeEmission")
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    return mat, nt, em
+
+
+def _emission_copy(material) -> bpy.types.Material:
+    """A temporary copy of `material` that shows its base colour as light (for the EMIT bake)."""
+    mat, nt, em = _light_copy(material, "")
+    socket = _base_colour_socket(mat)
     if socket is not None and socket.links:
         nt.links.new(socket.links[0].from_socket, em.inputs["Color"])
     elif socket is not None:
@@ -202,6 +218,29 @@ def _emission_copy(material) -> bpy.types.Material:
     else:
         em.inputs["Color"].default_value = (*material.diffuse_color[:3], 1.0)
     return mat
+
+
+def _metal_rough_copy(material) -> bpy.types.Material:
+    """A temporary copy of `material` that shows (1, roughness, metallic) as light: glTF's
+    metallicRoughness channel order, so the baked image can be exported as it is."""
+    mat, nt, em = _light_copy(material, "_mr")
+    pack = nt.nodes.new("ShaderNodeCombineColor")
+    pack.inputs["Red"].default_value = 1.0
+    for name, channel, fallback in (("Roughness", "Green", material.roughness),
+                                    ("Metallic", "Blue", material.metallic)):
+        socket = _bsdf_socket(mat, name)
+        if socket is not None and socket.links:
+            nt.links.new(socket.links[0].from_socket, pack.inputs[channel])
+        else:
+            pack.inputs[channel].default_value = socket.default_value if socket is not None else fallback
+    nt.links.new(pack.outputs["Color"], em.inputs["Color"])
+    return mat
+
+
+def has_texture_metal_rough(obj) -> bool:
+    """True if a material of obj feeds Metallic or Roughness from other nodes (e.g. a texture)."""
+    return any((sock := _bsdf_socket(m, name)) is not None and sock.links
+               for m in obj.data.materials for name in ("Metallic", "Roughness"))
 
 
 def _match_image(image, stats, strength: float) -> None:
@@ -219,10 +258,24 @@ def _match_image(image, stats, strength: float) -> None:
 
 
 # ---------------------------------------------------------------- main entry
+def _new_image(name: str, size: int, data: bool) -> bpy.types.Image:
+    old = bpy.data.images.get(name)
+    if old:
+        bpy.data.images.remove(old)
+    image = bpy.data.images.new(name, size, size, alpha=not data)
+    if data:   # numbers (roughness, normals), not colours: stored as they are
+        image.colorspace_settings.name = "Non-Color"
+    return image
+
+
 def bake_colours(context, source, target, *, size=2048, match_stats=None, match_strength=0.0,
-                 save_dir: str | Path | None = None) -> bpy.types.Image:
+                 surface_maps=False, save_dir: str | Path | None = None) -> dict[str, bpy.types.Image]:
     """Bake source's colours (colour attribute or base colour texture) onto target's texture.
-    Returns the image (packed)."""
+
+    With `surface_maps`, a textured original (ComfyUI) also gives a metallicRoughness texture
+    (if its material feeds Metallic/Roughness from other nodes) and a tangent-space normal map.
+    Returns the baked images by role: "base_color", plus "metallic_roughness" and "normal"
+    when baked. All are packed."""
     match = match_stats is not None and match_strength > 0
     layer = colour_layer(source)
     if layer is not None:
@@ -233,6 +286,8 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
         bake_mats = [_emission_copy(m) for m in source.data.materials]
     else:
         raise RuntimeError("The original has no TRELLIS colours.")
+    surface_maps = surface_maps and layer is None    # the colour-layer (Mac) original has no maps
+    metal_rough = surface_maps and has_texture_metal_rough(source)
 
     unwrap(context, target)
 
@@ -241,35 +296,53 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
     size_m = max(hi - lo)
     voxel = cleanup.DETAIL_VOXEL["NORMAL"] * size_m
 
-    name = f"{target.name}_basecolor"
-    old = bpy.data.images.get(name)
-    if old:
-        bpy.data.images.remove(old)
-    image = bpy.data.images.new(name, size, size)
+    images = {"base_color": _new_image(f"{target.name}_basecolor", size, data=False)}
+    if metal_rough:
+        images["metallic_roughness"] = _new_image(f"{target.name}_metallicroughness", size, data=True)
+    if surface_maps:
+        images["normal"] = _new_image(f"{target.name}_normal", size, data=True)
 
-    # target material: Principled with the (to be baked) texture; the image node must be active
+    # target material: Principled with the (to be baked) textures; the image node being baked
+    # into must be the active node
     mat = bpy.data.materials.get(f"{target.name}_mat") or bpy.data.materials.new(f"{target.name}_mat")
     nt = mat.node_tree
     nt.nodes.clear()
     bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
+    tex.image = images["base_color"]
     nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
     nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
-    bsdf.inputs["Roughness"].default_value = 0.8
-    nt.nodes.active = tex
+    src_mats = list(source.data.materials)
+    passes = [("EMIT", tex, bake_mats)]
+    if metal_rough:
+        # the layout Blender's glTF exporter writes as one metallicRoughness texture
+        mr_tex = nt.nodes.new("ShaderNodeTexImage")
+        mr_tex.image = images["metallic_roughness"]
+        split = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(mr_tex.outputs["Color"], split.inputs["Color"])
+        nt.links.new(split.outputs["Green"], bsdf.inputs["Roughness"])
+        nt.links.new(split.outputs["Blue"], bsdf.inputs["Metallic"])
+        passes.append(("EMIT", mr_tex, [_metal_rough_copy(m) for m in src_mats]))
+    else:
+        bsdf.inputs["Roughness"].default_value = 0.8
+    if surface_maps:
+        n_tex = nt.nodes.new("ShaderNodeTexImage")
+        n_tex.image = images["normal"]
+        n_map = nt.nodes.new("ShaderNodeNormalMap")
+        n_map.space = "TANGENT"
+        n_map.uv_map = "UVMap"
+        nt.links.new(n_tex.outputs["Color"], n_map.inputs["Color"])
+        nt.links.new(n_map.outputs["Normal"], bsdf.inputs["Normal"])
+        passes.append(("NORMAL", n_tex, src_mats))   # the detailed shape with its own materials
     target.data.materials.clear()
     target.data.materials.append(mat)
+    all_bake_mats = [m for _, _, mats in passes for m in mats if m not in src_mats]
 
-    # source: temporarily show its colours as light, make it visible and selectable
-    src_mats = list(source.data.materials)
+    # source: temporarily make it visible and selectable; each pass gives it its own materials
     src_hidden, src_hide_render = source.hide_get(), source.hide_render
     source.hide_set(False)
     source.hide_render = False
-    source.data.materials.clear()
-    for m in bake_mats:  # same slots, so each face keeps its own material
-        source.data.materials.append(m)
 
     scene = context.scene
     prev_engine = scene.render.engine
@@ -289,12 +362,19 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
         source.select_set(True)
         target.select_set(True)
         view_layer.objects.active = target
-        with context.temp_override(**_view3d_override(context), active_object=target, object=target,
-                                   selected_objects=[source, target], selected_editable_objects=[source, target]):
-            bpy.ops.object.bake(type="EMIT", use_selected_to_active=True,
-                                cage_extrusion=4 * voxel, max_ray_distance=10 * voxel,
-                                margin=16, use_clear=True, uv_layer="UVMap")
+        for bake_type, node, mats in passes:
+            source.data.materials.clear()
+            for m in mats:  # same slots, so each face keeps its own material
+                source.data.materials.append(m)
+            nt.nodes.active = node
+            with context.temp_override(**_view3d_override(context), active_object=target, object=target,
+                                       selected_objects=[source, target],
+                                       selected_editable_objects=[source, target]):
+                bpy.ops.object.bake(type=bake_type, use_selected_to_active=True,
+                                    cage_extrusion=4 * voxel, max_ray_distance=10 * voxel,
+                                    normal_space="TANGENT", margin=16, use_clear=True, uv_layer="UVMap")
     finally:
+        nt.nodes.active = tex
         scene.render.engine = prev_engine
         source.select_set(False)
         target.select_set(False)
@@ -309,18 +389,19 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
         source.hide_render = src_hide_render
         if _TMP_ATTR in source.data.color_attributes:
             source.data.color_attributes.remove(source.data.color_attributes[_TMP_ATTR])
-        for m in bake_mats:
+        for m in all_bake_mats:
             if m.name.startswith("I23D_bake_") and m.name != "I23D_bake_source" and m.users == 0:
                 bpy.data.materials.remove(m)
 
     if layer is None and match:
-        _match_image(image, match_stats, match_strength)
+        _match_image(images["base_color"], match_stats, match_strength)
 
-    if save_dir:
-        path = Path(save_dir).expanduser() / f"{name}.png"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        image.filepath_raw = str(path)
-        image.file_format = "PNG"
-        image.save()
-    image.pack()   # stays inside the .blend and is embedded in .glb exports
-    return image
+    for image in images.values():
+        if save_dir:
+            path = Path(save_dir).expanduser() / f"{image.name}.png"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            image.filepath_raw = str(path)
+            image.file_format = "PNG"
+            image.save()
+        image.pack()   # stays inside the .blend and is embedded in .glb exports
+    return images

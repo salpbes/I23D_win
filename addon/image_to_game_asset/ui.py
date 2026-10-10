@@ -74,6 +74,7 @@ class I23D_PT_main(_Base, bpy.types.Panel):
             row.prop(s, "color", text="")
         else:
             box.prop(s, "colour_match", slider=True)
+            box.prop(s, "surface_maps")
         if s.material_preset == "CUSTOM":
             sub = box.row(align=True)
             sub.prop(s, "metallic", slider=True)

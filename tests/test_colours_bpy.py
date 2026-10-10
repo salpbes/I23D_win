@@ -24,6 +24,8 @@ assert s.material_preset == "TRELLIS", s.material_preset
 s.budget = "LIGHT"
 r = bpy.ops.i23d.clean(); assert r == {"FINISHED"}, r
 print("clean:", s.last_result)
+assert "metal/roughness" not in s.last_result and "normal map" not in s.last_result  # colour layer: no maps
+assert not any(n.type == "NORMAL_MAP" for n in bpy.data.objects["toy_5k"].data.materials[0].node_tree.nodes)
 g = bpy.data.objects["toy_5k"]
 img = g.data.materials[0].node_tree.nodes.active.image
 W = img.size[0]; px = np.empty(W*W*4, np.float32); img.pixels.foreach_get(px); px = px.reshape(W, W, 4)

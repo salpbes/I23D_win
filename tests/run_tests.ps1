@@ -27,7 +27,7 @@ function Invoke-Blender([string]$Script, [string[]]$More = @()) {
     $code = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
     if ($code -ne 0) { $out | Select-Object -Last 30 | Write-Host; throw "$Script failed" }
-    $out | Where-Object { $_ -match "PASSED|error|clean:|re-imported|mean colour" -and $_ -notmatch "Warning" } |
+    $out | Where-Object { $_ -match "PASSED|error|clean:|re-imported|mean colour|exported" -and $_ -notmatch "Warning" } |
         Select-Object -Last 6 | Write-Host
 }
 
@@ -41,7 +41,8 @@ Invoke-Blender "make_messy.py" @((Join-Path $W "messy.glb"))   # a deliberately 
 if ($LASTEXITCODE -ne 0) { throw "test_runner.py failed" }
 
 Write-Host "== 2. Add-on inside Blender ($Blender)"
-foreach ($t in "test_ui_bpy", "test_quality_bpy", "test_addon_bpy", "test_colours_bpy", "test_texture_colours_bpy") {
+foreach ($t in "test_ui_bpy", "test_quality_bpy", "test_addon_bpy", "test_colours_bpy", "test_texture_colours_bpy",
+             "test_surface_maps_bpy") {
     Write-Host "-- $t"
     Invoke-Blender "$t.py"
 }

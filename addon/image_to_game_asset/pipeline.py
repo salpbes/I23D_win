@@ -147,14 +147,18 @@ def apply_look(context, game, source) -> str:
     keep = game.matrix_world.copy()
     game.matrix_world = to_final.inverted()          # sit exactly on the original while baking
     try:
-        baking.bake_colours(context, source, game, size=int(s.texture_size),
-                            match_stats=stats, match_strength=s.colour_match if stats else 0.0,
-                            save_dir=output_dir(context) / "textures")
+        images = baking.bake_colours(context, source, game, size=int(s.texture_size),
+                                     match_stats=stats, match_strength=s.colour_match if stats else 0.0,
+                                     surface_maps=s.surface_maps, save_dir=output_dir(context) / "textures")
     finally:
         game.matrix_world = keep
     if s.colour_match > 0 and stats is None:
-        return "TRELLIS colours (photo not readable - no matching)"
-    return f"TRELLIS colours, {int(round(s.colour_match * 100))}% matched to photo" if stats else "TRELLIS colours"
+        note = "TRELLIS colours (photo not readable - no matching)"
+    else:
+        note = f"TRELLIS colours, {int(round(s.colour_match * 100))}% matched to photo" if stats else "TRELLIS colours"
+    maps = [label for key, label in (("metallic_roughness", "metal/roughness"), ("normal", "normal map"))
+            if key in images]
+    return note + (" + " + " + ".join(maps) if maps else "")
 
 
 def describe(stats: dict) -> str:
