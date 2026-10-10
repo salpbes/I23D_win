@@ -79,9 +79,9 @@ class I23D_Settings(bpy.types.PropertyGroup):
     # Advanced
     quality: EnumProperty(
         name="Detail",
-        items=[("512", "Fast (512)", "About 8 minutes on an M4"),
-               ("1024_cascade", "High (1024)", "Same as the Hugging Face page. Can take an hour or more and may run out of memory on a 24 GB Mac")],
-        default="512")
+        items=[("1024", "Standard (1024)", "Under 3 minutes and about 11.5 GB of graphics memory on an RTX 5060 Ti 16 GB"),
+               ("1536", "High (1536)", "Finer shape; slower and needs more graphics memory. Not yet tested on 16 GB")],
+        default="1024")
     random_seed: BoolProperty(
         name="New seed each time", default=True,
         description="Like the Hugging Face page: every run gives a different take. The seed used is shown below")
@@ -90,10 +90,6 @@ class I23D_Settings(bpy.types.PropertyGroup):
     fix_orientation: BoolProperty(
         name="Stand upright", default=True,
         description="TRELLIS.2 models import lying on their side; turn them upright")
-    bake_textures: BoolProperty(
-        name="Bake textures (very slow)", default=False,
-        # off: TRELLIS colours come through the faster colour patch instead
-        description="On a Mac this can take over an hour and is often noisy")
     detail: EnumProperty(
         name="Rebuild detail",
         items=[("FINE", "Fine", "Keeps the thinnest details; slower"),

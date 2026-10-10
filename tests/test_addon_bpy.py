@@ -9,7 +9,8 @@ mod = addon_utils.enable("image_to_game_asset", default_set=True, handle_error=N
 assert mod is not None, "enable failed"
 ctx = bpy.context
 prefs = ctx.preferences.addons["image_to_game_asset"].preferences
-prefs.trellis_dir = T + "/fake_trellis"; prefs.output_dir = T + "/out_bpy"
+prefs.comfy_dir = T + "/ComfyUI_windows_portable"; prefs.output_dir = T + "/out_bpy"  # stand-in made by test_runner.py
+prefs.comfy_url = "http://127.0.0.1:9"  # nothing listens there: the folder check is used
 s = ctx.scene.i23d
 # properties behaviour
 s.image_path = T + "/picture.png"; assert s.asset_name == "picture", s.asset_name

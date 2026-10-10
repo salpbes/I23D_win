@@ -1,6 +1,7 @@
 """Bake TRELLIS.2's own colours from the detailed original onto the light game mesh.
 
-The detailed original keeps TRELLIS.2's colours on its points (a colour attribute).
+The detailed original keeps TRELLIS.2's colours either in its material's base colour texture
+(ComfyUI on Windows) or on its points as a colour attribute (the Mac version).
 Cleaning rebuilds the shape, which drops those colours, so we copy them across:
 for every pixel of the game mesh's texture, Blender looks out from the game surface,
 finds the detailed original, and takes its colour ("selected to active" bake).
@@ -70,6 +71,43 @@ def colour_layer(obj) -> str | None:
     return names[0] if names else None
 
 
+def _base_colour_socket(material):
+    """The Principled BSDF's Base Color input of `material`, or None."""
+    if material is None or material.node_tree is None:
+        return None
+    bsdf = next((n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    return bsdf.inputs["Base Color"] if bsdf else None
+
+
+def has_texture_colours(obj) -> bool:
+    """True if a material of obj gets its base colour from an image (e.g. a ComfyUI .glb)."""
+    for mat in obj.data.materials:
+        socket = _base_colour_socket(mat)
+        todo = [link.from_node for link in socket.links] if socket else []
+        while todo:
+            node = todo.pop()
+            if node.type == "TEX_IMAGE" and node.image is not None:
+                return True
+            todo += [link.from_node for inp in node.inputs for link in inp.links]
+    return False
+
+
+def _shift_colours(rgb, stats, strength: float, ref_mask=None):
+    """Move sRGB colours' brightness and tint toward the photo's. Returns new sRGB colours."""
+    lab = _to_lab(rgb)
+    ref = lab[ref_mask] if ref_mask is not None and ref_mask.sum() > 100 else lab
+    mu_m, sd_m = ref.mean(0), ref.std(0) + 1e-6
+    mu_p, sd_p = stats
+    mu_t = mu_m + strength * (mu_p - mu_m)
+    sd_t = sd_m + strength * (sd_p - sd_m)
+    new = (lab - mu_m) / sd_m * sd_t + mu_t
+    # grey parts (metal, stone) keep their own tint, so they don't turn blue or green
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    keep_tint = 1 - np.clip(chroma / 12.0, 0, 1)
+    new[:, 1:] = new[:, 1:] * (1 - keep_tint[:, None]) + lab[:, 1:] * keep_tint[:, None]
+    return _from_lab(new)
+
+
 def _matched_layer(source, layer: str, stats, strength: float) -> str:
     """Write an adjusted copy of the colours into a temporary layer; return its name."""
     me = source.data
@@ -87,18 +125,7 @@ def _matched_layer(source, layer: str, stats, strength: float) -> str:
     else:
         facing = -nrm[:, 1]
     front = facing > 0.35                              # what the photo's camera saw
-    lab = _to_lab(col[:, :3])
-    ref = lab[front] if front.sum() > 100 else lab
-    mu_m, sd_m = ref.mean(0), ref.std(0) + 1e-6
-    mu_p, sd_p = stats
-    mu_t = mu_m + strength * (mu_p - mu_m)
-    sd_t = sd_m + strength * (sd_p - sd_m)
-    new = (lab - mu_m) / sd_m * sd_t + mu_t
-    # grey parts (metal, stone) keep their own tint, so they don't turn blue or green
-    chroma = np.hypot(lab[:, 1], lab[:, 2])
-    keep_tint = 1 - np.clip(chroma / 12.0, 0, 1)
-    new[:, 1:] = new[:, 1:] * (1 - keep_tint[:, None]) + lab[:, 1:] * keep_tint[:, None]
-    col[:, :3] = _from_lab(new)
+    col[:, :3] = _shift_colours(col[:, :3], stats, strength, front)
     if _TMP_ATTR in me.color_attributes:
         me.color_attributes.remove(me.color_attributes[_TMP_ATTR])
     tmp = me.color_attributes.new(_TMP_ATTR, ca.data_type, ca.domain)
@@ -157,15 +184,55 @@ def _emit_material(layer: str) -> bpy.types.Material:
     return mat
 
 
+def _emission_copy(material) -> bpy.types.Material:
+    """A temporary copy of `material` that shows its base colour as light (for the EMIT bake)."""
+    mat = material.copy()
+    mat.name = f"I23D_bake_{material.name}"
+    nt = mat.node_tree
+    socket = _base_colour_socket(mat)
+    for node in [n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"]:
+        nt.nodes.remove(node)
+    em = nt.nodes.new("ShaderNodeEmission")
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    if socket is not None and socket.links:
+        nt.links.new(socket.links[0].from_socket, em.inputs["Color"])
+    elif socket is not None:
+        em.inputs["Color"].default_value = socket.default_value
+    else:
+        em.inputs["Color"].default_value = (*material.diffuse_color[:3], 1.0)
+    return mat
+
+
+def _match_image(image, stats, strength: float) -> None:
+    """Colour-match a baked texture in place (empty, never-baked pixels are left alone)."""
+    w, h = image.size
+    px = np.empty(w * h * 4, np.float32)
+    image.pixels.foreach_get(px)
+    px = px.reshape(-1, 4)
+    used = px[:, :3].sum(1) > 0.002
+    if used.sum() < 100:
+        return
+    px[used, :3] = _shift_colours(px[used, :3], stats, strength)
+    image.pixels.foreach_set(px.ravel())
+    image.update()
+
+
 # ---------------------------------------------------------------- main entry
 def bake_colours(context, source, target, *, size=2048, match_stats=None, match_strength=0.0,
                  save_dir: str | Path | None = None) -> bpy.types.Image:
-    """Bake source's colour attribute onto target's texture. Returns the image (packed)."""
+    """Bake source's colours (colour attribute or base colour texture) onto target's texture.
+    Returns the image (packed)."""
+    match = match_stats is not None and match_strength > 0
     layer = colour_layer(source)
-    if layer is None:
+    if layer is not None:
+        if match:
+            layer = _matched_layer(source, layer, match_stats, match_strength)
+        bake_mats = [_emit_material(layer)]
+    elif has_texture_colours(source):
+        bake_mats = [_emission_copy(m) for m in source.data.materials]
+    else:
         raise RuntimeError("The original has no TRELLIS colours.")
-    if match_stats is not None and match_strength > 0:
-        layer = _matched_layer(source, layer, match_stats, match_strength)
 
     unwrap(context, target)
 
@@ -201,7 +268,8 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
     source.hide_set(False)
     source.hide_render = False
     source.data.materials.clear()
-    source.data.materials.append(_emit_material(layer))
+    for m in bake_mats:  # same slots, so each face keeps its own material
+        source.data.materials.append(m)
 
     scene = context.scene
     prev_engine = scene.render.engine
@@ -241,6 +309,12 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
         source.hide_render = src_hide_render
         if _TMP_ATTR in source.data.color_attributes:
             source.data.color_attributes.remove(source.data.color_attributes[_TMP_ATTR])
+        for m in bake_mats:
+            if m.name.startswith("I23D_bake_") and m.name != "I23D_bake_source" and m.users == 0:
+                bpy.data.materials.remove(m)
+
+    if layer is None and match:
+        _match_image(image, match_stats, match_strength)
 
     if save_dir:
         path = Path(save_dir).expanduser() / f"{name}.png"

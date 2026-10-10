@@ -2,15 +2,34 @@
 
 from __future__ import annotations
 
+import atexit
 import random
-from collections import deque
 from pathlib import Path
 
 import bpy
 
 from . import pipeline, preferences, trellis_runner as tr
 
-_job: tr.TrellisJob | None = None  # only one TRELLIS run at a time
+_job: tr.TrellisJob | None = None        # only one TRELLIS run at a time
+_server: tr.ComfyServer | None = None    # the ComfyUI this add-on started (if any)
+
+
+def _stop_server() -> None:
+    global _server
+    if _server is not None:
+        _server.stop()
+        _server = None
+
+
+def _server_for(prefs, log_path) -> tr.ComfyServer | None:
+    """The ComfyUI to start if none is running (None if the user doesn't want that)."""
+    global _server
+    if not prefs.start_comfy:
+        return None
+    comfy_dir = bpy.path.abspath(prefs.comfy_dir)
+    if _server is None or not _server.is_alive() or str(_server.comfy_dir) != str(Path(comfy_dir).expanduser()):
+        _server = tr.ComfyServer(comfy_dir, prefs.comfy_url, log_path=log_path)
+    return _server
 
 
 def _redraw(context):
@@ -33,7 +52,8 @@ def _clean_and_maybe_export(op, context, obj):
 class I23D_OT_generate(bpy.types.Operator):
     bl_idname = "i23d.generate"
     bl_label = "Generate 3D Model"
-    bl_description = "Run TRELLIS.2 on the picture (about 5-10 minutes). Blender stays usable"
+    bl_description = ("Make a 3D model from the picture with TRELLIS.2 on this PC "
+                      "(under 3 minutes). Blender stays usable")
     bl_options = {"REGISTER"}
 
     def execute(self, context):
@@ -44,12 +64,14 @@ class I23D_OT_generate(bpy.types.Operator):
             self.report({"WARNING"}, "A model is already being generated.")
             return {"CANCELLED"}
 
-        problems = tr.check_setup(bpy.path.abspath(prefs.trellis_dir))
         image = bpy.path.abspath(s.image_path)
-        image_problem = tr.check_image(image) if s.image_path else "Choose a picture first."
-        if image_problem:
-            problems.insert(0, image_problem)
-        if problems:
+        problems = [tr.check_image(image) if s.image_path else "Choose a picture first."]
+        if not problems[0]:
+            problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
+            if not problems and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
+                problems = [f"ComfyUI is not running at {prefs.comfy_url}. Start it, or turn on "
+                            "'Start ComfyUI when needed' in the add-on preferences."]
+        if problems and problems[0]:
             s.status, s.last_error = "Can't start", problems[0]
             self.report({"ERROR"}, problems[0])
             return {"CANCELLED"}
@@ -57,22 +79,14 @@ class I23D_OT_generate(bpy.types.Operator):
         self._name = tr.sanitize_name(s.asset_name or Path(image).stem)
         s.asset_name = self._name
         out_dir = pipeline.output_dir(context)
-        self._out_base = out_dir / self._name
         if s.random_seed:
             s.seed = random.randint(0, 2_147_483_647)
-        cmd = tr.build_command(bpy.path.abspath(prefs.trellis_dir), image, self._out_base,
-                               seed=s.seed, bake_textures=s.bake_textures, pipeline_type=s.quality)
         s.last_log = str(out_dir / f"{self._name}_log.txt")
-        _job = tr.TrellisJob(cmd, bpy.path.abspath(prefs.trellis_dir), log_path=s.last_log)
-        try:
-            _job.start()
-        except OSError as exc:
-            s.status, s.last_error = "Can't start", str(exc)
-            self.report({"ERROR"}, f"Could not start TRELLIS.2: {exc}")
-            return {"CANCELLED"}
+        _job = tr.TrellisJob(url=prefs.comfy_url, image=image, out_base=out_dir / self._name,
+                             seed=s.seed, detail=s.quality, log_path=s.last_log,
+                             server=_server_for(prefs, out_dir / "comfyui_log.txt"))
+        _job.start()
 
-        self._parser = tr.ProgressParser()
-        self._tail = deque(maxlen=6)
         s.is_running, s.progress, s.status = True, 0.0, "Starting..."
         s.last_error = s.last_result = ""
         wm = context.window_manager
@@ -82,13 +96,10 @@ class I23D_OT_generate(bpy.types.Operator):
 
     def _read(self, context):
         s = context.scene.i23d
-        for line in _job.poll_lines():
-            self._parser.feed(line)
-            self._tail.append(line.strip())
-        s.progress, s.status = self._parser.fraction, self._parser.label
+        s.progress, s.status = _job.fraction, _job.label
         quiet = _job.quiet_for()
         s.activity = (f"Running {tr.fmt_duration(_job.elapsed())} · "
-                      f"last output {tr.fmt_duration(quiet)} ago")
+                      f"last news {tr.fmt_duration(quiet)} ago")
         s.looks_stuck = quiet > tr.QUIET_WARNING_SECONDS.get(s.quality, 15 * 60)
         _redraw(context)
 
@@ -107,22 +118,20 @@ class I23D_OT_generate(bpy.types.Operator):
         if _job.is_running():
             return {"PASS_THROUGH"}
 
-        self._read(context)  # last lines
+        self._read(context)  # last news
         self._finish(context)
+        if not preferences.get(context).keep_comfy:
+            _stop_server()  # only stops a ComfyUI this add-on started
         if _job.cancelled:
             s.status = "Cancelled"
             return {"CANCELLED"}
 
-        code = _job.returncode
-        glb = Path(self._parser.glb_path or f"{self._out_base}.glb")
-        if code != 0 or not glb.is_file():
-            if code == tr.EXIT_GPU_WATCHDOG:
-                s.last_error = ("macOS stopped the graphics work. Close other apps and "
-                                "external displays, then try again.")
-            else:
-                errors = [t for t in self._tail if "Error" in t or "error" in t]
-                s.last_error = (errors[-1] if errors else " | ".join(list(self._tail)[-2:])) \
-                    or f"TRELLIS.2 stopped (code {code})."
+        glb = Path(_job.glb_path) if _job.glb_path else None
+        if _job.error or glb is None or not glb.is_file():
+            s.last_error = _job.error or "ComfyUI finished without a model."
+            if "out of memory" in s.last_error.lower():
+                s.last_error += (" - Close other programs that use the graphics card, "
+                                 "or choose Standard detail.")
             s.status = f"Failed - see {self._name}_log.txt"
             self.report({"ERROR"}, s.last_error[:300])
             return {"CANCELLED"}
@@ -146,12 +155,27 @@ class I23D_OT_generate(bpy.types.Operator):
 class I23D_OT_cancel(bpy.types.Operator):
     bl_idname = "i23d.cancel"
     bl_label = "Cancel"
-    bl_description = "Stop TRELLIS.2"
+    bl_description = "Stop making this model (ComfyUI keeps running for the next one)"
 
     def execute(self, context):
         if _job is not None:
             _job.cancel()
         context.scene.i23d.status = "Cancelling..."
+        return {"FINISHED"}
+
+
+class I23D_OT_stop_comfy(bpy.types.Operator):
+    bl_idname = "i23d.stop_comfy"
+    bl_label = "Stop ComfyUI"
+    bl_description = "Stop the ComfyUI this add-on started and free its memory (the next model starts slower)"
+
+    @classmethod
+    def poll(cls, context):
+        return _server is not None and _server.is_alive() and not context.scene.i23d.is_running
+
+    def execute(self, context):
+        _stop_server()
+        self.report({"INFO"}, "ComfyUI stopped.")
         return {"FINISHED"}
 
 
@@ -226,7 +250,7 @@ class I23D_OT_export(bpy.types.Operator):
 class I23D_OT_open_folder(bpy.types.Operator):
     bl_idname = "i23d.open_folder"
     bl_label = "Open Folder"
-    bl_description = "Show the export folder in Finder"
+    bl_description = "Show the export folder in File Explorer"
 
     def execute(self, context):
         folder = pipeline.export_dir(context)
@@ -238,7 +262,7 @@ class I23D_OT_open_folder(bpy.types.Operator):
 class I23D_OT_open_log(bpy.types.Operator):
     bl_idname = "i23d.open_log"
     bl_label = "Open Log"
-    bl_description = "Open the full TRELLIS.2 output for the last run"
+    bl_description = "Open the log of the last run (what ComfyUI reported, step by step)"
 
     @classmethod
     def poll(cls, context):
@@ -262,21 +286,23 @@ class I23D_OT_dismiss_error(bpy.types.Operator):
 class I23D_OT_check_setup(bpy.types.Operator):
     bl_idname = "i23d.check_setup"
     bl_label = "Check Setup"
-    bl_description = "Check that TRELLIS.2 is installed where the add-on expects it"
+    bl_description = "Check that ComfyUI and the TRELLIS.2 model files are where the add-on expects them"
 
     def execute(self, context):
-        problems = tr.check_setup(bpy.path.abspath(preferences.get(context).trellis_dir))
+        prefs = preferences.get(context)
+        problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
         if problems:
             for p in problems:
                 self.report({"ERROR"}, p)
             return {"CANCELLED"}
-        self.report({"INFO"}, "TRELLIS.2 is ready.")
+        running = "running" if tr.server_up(prefs.comfy_url) else "installed (starts when needed)"
+        self.report({"INFO"}, f"Ready: ComfyUI {running}, TRELLIS.2 models found.")
         return {"FINISHED"}
 
 
-CLASSES = (I23D_OT_generate, I23D_OT_cancel, I23D_OT_clean, I23D_OT_apply_material,
-           I23D_OT_export, I23D_OT_open_folder, I23D_OT_open_log, I23D_OT_dismiss_error,
-           I23D_OT_check_setup)
+CLASSES = (I23D_OT_generate, I23D_OT_cancel, I23D_OT_stop_comfy, I23D_OT_clean,
+           I23D_OT_apply_material, I23D_OT_export, I23D_OT_open_folder, I23D_OT_open_log,
+           I23D_OT_dismiss_error, I23D_OT_check_setup)
 
 
 @bpy.app.handlers.persistent
@@ -293,6 +319,7 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.app.handlers.load_post.append(_reset_after_load)
+    atexit.register(_stop_server)  # don't leave ComfyUI running after Blender quits
 
 
 def unregister():
@@ -300,5 +327,8 @@ def unregister():
         bpy.app.handlers.load_post.remove(_reset_after_load)
     if _job is not None:
         _job.cancel()
+        _job.wait(10)
+    _stop_server()
+    atexit.unregister(_stop_server)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

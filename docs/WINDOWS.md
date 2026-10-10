@@ -1,11 +1,11 @@
 # Using this on Windows: findings and plan
 
-> **Short answer:** the Blender add-on itself is plain Python and would run on Windows Blender with
-> a few small changes. The hard part is **TRELLIS.2** (the AI that makes the 3D model). On Windows it
-> needs a **strong NVIDIA graphics card**. This repo has **only been tested on a Mac (Apple M4, 24 GB)**.
-> Nothing below has been tested on a Windows PC yet.
+> **Status (2026-10-10): works.** The add-on runs TRELLIS.2 through ComfyUI's built-in TRELLIS.2
+> nodes (Option D below), tested end to end on an RTX 5060 Ti 16 GB. How to install and use it:
+> [README](../README.md) and [WORKFLOW.md](WORKFLOW.md). The rest of this page is the research
+> that led there, kept for reference; sections 1–6 were written for the Mac version.
 
-Status: research notes, October 2026.
+Status of the notes below: research notes, October 2026.
 
 ## Update for I23D_win (2026-10-10)
 
@@ -48,8 +48,13 @@ How the run was made:
   only the nodes that feed `Save3DAdvanced` (45 of 63 nodes).
 - The `.glb` lands in `ComfyUI/output/3d/`; `/history/<prompt_id>` gives its file name.
 
-Next for the add-on: a ComfyUI backend in place of `generate.py` (upload picture, send the
-workflow, read progress, fetch the `.glb`), and "bake from texture" so *TRELLIS colours* works.
+Done since (add-on 2.0.0): a ComfyUI backend in place of `generate.py` (start ComfyUI offline,
+upload the picture, send the workflow, follow progress over a WebSocket, fetch the `.glb`, Cancel),
+"bake from texture" so *TRELLIS colours* works, and a Windows installer. ComfyUI's
+ambient-occlusion and normal-map bakes (72 s, unused by the add-on) are left out.
+Measured with the Generate button in Blender 5.2.2: **2:43** from pressing Generate to a finished
+model, *including* starting ComfyUI and loading the models from disk; the 15k clean + colour bake
+then takes about 15 s more. Peak graphics memory 11.2 GB.
 
 ---
 

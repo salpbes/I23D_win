@@ -135,10 +135,10 @@ def apply_look(context, game, source) -> str:
     if s.material_preset != "TRELLIS":
         materials.apply(game, s.color, s.metallic, s.roughness)
         return "plain material"
-    if baking.colour_layer(source) is None:
+    if baking.colour_layer(source) is None and not baking.has_texture_colours(source):
         clay = materials.PRESETS["CLAY"]
         materials.apply(game, clay[1], clay[2], clay[3])
-        return "no TRELLIS colours found - used Clay (turn Bake textures off; install the colour patch)"
+        return "no TRELLIS colours found on the original - used Clay"
     stats = None
     if s.colour_match > 0:
         picture = source.get("i23d_image") or bpy.path.abspath(s.image_path)

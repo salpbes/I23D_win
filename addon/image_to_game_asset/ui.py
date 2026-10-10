@@ -42,9 +42,10 @@ class I23D_PT_main(_Base, bpy.types.Panel):
             if s.looks_stuck:
                 warn = box.column(align=True)
                 warn.alert = True
-                warn.label(text="No output for a long time.", icon="ERROR")
-                warn.label(text="It may be out of memory (check Activity")
-                warn.label(text="Monitor > Memory). Cancel and try Fast.")
+                warn.label(text="No news from ComfyUI for a long time.", icon="ERROR")
+                warn.label(text="It may be out of graphics memory (Task")
+                warn.label(text="Manager > Performance > GPU). Cancel and")
+                warn.label(text="try Standard detail.")
             box.operator("i23d.cancel", icon="CANCEL")
             box.label(text="Blender stays usable; keep the scene light.", icon="INFO")
         else:
@@ -57,8 +58,8 @@ class I23D_PT_main(_Base, bpy.types.Panel):
                 box.label(text=s.activity, icon="TIME")
             if s.last_log:
                 box.operator("i23d.open_log", icon="TEXT")
-            if s.quality != "512":
-                box.label(text="Detail is High: can take 1h+ on 24 GB", icon="ERROR")
+            if s.quality != "1024":
+                box.label(text="Detail is High: needs more graphics memory", icon="ERROR")
 
         # 2. Clean
         box = layout.box()
@@ -122,14 +123,13 @@ class I23D_PT_advanced(_Base, bpy.types.Panel):
         col = layout.column(heading="Generate")
         col.enabled = not s.is_running
         col.prop(s, "quality")
-        if s.quality != "512":
-            col.label(text="Slow and memory-hungry on a Mac", icon="ERROR")
+        if s.quality != "1024":
+            col.label(text="Not yet tested on 16 GB cards", icon="ERROR")
         col.prop(s, "random_seed")
         sub = col.row()
         sub.enabled = not s.random_seed
         sub.prop(s, "seed")
         col.prop(s, "fix_orientation")
-        col.prop(s, "bake_textures")
 
         col = layout.column(heading="Clean")
         col.prop(s, "detail")
@@ -144,7 +144,9 @@ class I23D_PT_advanced(_Base, bpy.types.Panel):
         col.prop(s, "draco")
 
         layout.separator()
-        layout.operator("i23d.check_setup", icon="CHECKMARK")
+        row = layout.row(align=True)
+        row.operator("i23d.check_setup", icon="CHECKMARK")
+        row.operator("i23d.stop_comfy", icon="X")
         layout.label(text="Paths: Edit > Preferences > Add-ons", icon="PREFERENCES")
 
 
