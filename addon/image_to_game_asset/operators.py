@@ -1,0 +1,304 @@
+"""Buttons. Each operator is thin: it checks inputs, calls pipeline, reports."""
+
+from __future__ import annotations
+
+import random
+from collections import deque
+from pathlib import Path
+
+import bpy
+
+from . import pipeline, preferences, trellis_runner as tr
+
+_job: tr.TrellisJob | None = None  # only one TRELLIS run at a time
+
+
+def _redraw(context):
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+
+
+def _clean_and_maybe_export(op, context, obj):
+    s = context.scene.i23d
+    game, stats = pipeline.clean(context, obj)
+    s.last_result = pipeline.describe(stats)
+    if s.auto_export:
+        path = pipeline.export(context, game)
+        s.last_result += f" · saved {path.name}"
+    return game
+
+
+class I23D_OT_generate(bpy.types.Operator):
+    bl_idname = "i23d.generate"
+    bl_label = "Generate 3D Model"
+    bl_description = "Run TRELLIS.2 on the picture (about 5-10 minutes). Blender stays usable"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        global _job
+        s = context.scene.i23d
+        prefs = preferences.get(context)
+        if _job is not None and _job.is_running():
+            self.report({"WARNING"}, "A model is already being generated.")
+            return {"CANCELLED"}
+
+        problems = tr.check_setup(bpy.path.abspath(prefs.trellis_dir))
+        image = bpy.path.abspath(s.image_path)
+        image_problem = tr.check_image(image) if s.image_path else "Choose a picture first."
+        if image_problem:
+            problems.insert(0, image_problem)
+        if problems:
+            s.status, s.last_error = "Can't start", problems[0]
+            self.report({"ERROR"}, problems[0])
+            return {"CANCELLED"}
+
+        self._name = tr.sanitize_name(s.asset_name or Path(image).stem)
+        s.asset_name = self._name
+        out_dir = pipeline.output_dir(context)
+        self._out_base = out_dir / self._name
+        if s.random_seed:
+            s.seed = random.randint(0, 2_147_483_647)
+        cmd = tr.build_command(bpy.path.abspath(prefs.trellis_dir), image, self._out_base,
+                               seed=s.seed, bake_textures=s.bake_textures, pipeline_type=s.quality)
+        s.last_log = str(out_dir / f"{self._name}_log.txt")
+        _job = tr.TrellisJob(cmd, bpy.path.abspath(prefs.trellis_dir), log_path=s.last_log)
+        try:
+            _job.start()
+        except OSError as exc:
+            s.status, s.last_error = "Can't start", str(exc)
+            self.report({"ERROR"}, f"Could not start TRELLIS.2: {exc}")
+            return {"CANCELLED"}
+
+        self._parser = tr.ProgressParser()
+        self._tail = deque(maxlen=6)
+        s.is_running, s.progress, s.status = True, 0.0, "Starting..."
+        s.last_error = s.last_result = ""
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.5, window=context.window)
+        wm.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def _read(self, context):
+        s = context.scene.i23d
+        for line in _job.poll_lines():
+            self._parser.feed(line)
+            self._tail.append(line.strip())
+        s.progress, s.status = self._parser.fraction, self._parser.label
+        quiet = _job.quiet_for()
+        s.activity = (f"Running {tr.fmt_duration(_job.elapsed())} · "
+                      f"last output {tr.fmt_duration(quiet)} ago")
+        s.looks_stuck = quiet > tr.QUIET_WARNING_SECONDS.get(s.quality, 15 * 60)
+        _redraw(context)
+
+    def _finish(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        context.scene.i23d.is_running = False
+        context.scene.i23d.looks_stuck = False
+        context.scene.i23d.activity = f"Took {tr.fmt_duration(_job.elapsed())}"
+        _redraw(context)
+
+    def modal(self, context, event):
+        if event.type != "TIMER":
+            return {"PASS_THROUGH"}
+        s = context.scene.i23d
+        self._read(context)
+        if _job.is_running():
+            return {"PASS_THROUGH"}
+
+        self._read(context)  # last lines
+        self._finish(context)
+        if _job.cancelled:
+            s.status = "Cancelled"
+            return {"CANCELLED"}
+
+        code = _job.returncode
+        glb = Path(self._parser.glb_path or f"{self._out_base}.glb")
+        if code != 0 or not glb.is_file():
+            if code == tr.EXIT_GPU_WATCHDOG:
+                s.last_error = ("macOS stopped the graphics work. Close other apps and "
+                                "external displays, then try again.")
+            else:
+                errors = [t for t in self._tail if "Error" in t or "error" in t]
+                s.last_error = (errors[-1] if errors else " | ".join(list(self._tail)[-2:])) \
+                    or f"TRELLIS.2 stopped (code {code})."
+            s.status = f"Failed - see {self._name}_log.txt"
+            self.report({"ERROR"}, s.last_error[:300])
+            return {"CANCELLED"}
+
+        try:
+            original = pipeline.import_original(context, glb, self._name, bpy.path.abspath(s.image_path))
+            s.status = "Model imported"
+            if s.auto_clean:
+                s.status = "Cleaning for games..."
+                _redraw(context)
+                _clean_and_maybe_export(self, context, original)
+            s.status = f"Done (seed {s.seed})"
+        except Exception as exc:  # show any Blender-side problem in the panel
+            s.status, s.last_error = "Failed after generating", str(exc)
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"{self._name}: done")
+        return {"FINISHED"}
+
+
+class I23D_OT_cancel(bpy.types.Operator):
+    bl_idname = "i23d.cancel"
+    bl_label = "Cancel"
+    bl_description = "Stop TRELLIS.2"
+
+    def execute(self, context):
+        if _job is not None:
+            _job.cancel()
+        context.scene.i23d.status = "Cancelling..."
+        return {"FINISHED"}
+
+
+class I23D_OT_clean(bpy.types.Operator):
+    bl_idname = "i23d.clean"
+    bl_label = "Clean for Game"
+    bl_description = ("Make a light, watertight copy of the selected model. "
+                      "The original is kept (hidden), so you can re-run with other settings")
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.type == "MESH" and not context.scene.i23d.is_running
+
+    def execute(self, context):
+        s = context.scene.i23d
+        try:
+            _clean_and_maybe_export(self, context, context.active_object)
+        except Exception as exc:
+            s.last_error = str(exc)
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        s.last_error = ""
+        self.report({"INFO"}, s.last_result)
+        return {"FINISHED"}
+
+
+class I23D_OT_apply_material(bpy.types.Operator):
+    bl_idname = "i23d.apply_material"
+    bl_label = "Apply Colours"
+    bl_description = "Re-apply the chosen colours (TRELLIS colours re-bake from the hidden original)"
+
+    @classmethod
+    def poll(cls, context):
+        return any(o.type == "MESH" for o in context.selected_objects)
+
+    def execute(self, context):
+        notes = []
+        for obj in [o for o in context.selected_objects if o.type == "MESH"]:
+            try:
+                notes.append(pipeline.apply_look(context, obj, pipeline.resolve_source(obj)))
+            except Exception as exc:
+                self.report({"ERROR"}, str(exc))
+                return {"CANCELLED"}
+        if notes:
+            self.report({"INFO"}, notes[-1])
+        return {"FINISHED"}
+
+
+class I23D_OT_export(bpy.types.Operator):
+    bl_idname = "i23d.export"
+    bl_label = "Export .glb"
+    bl_description = "Save each selected model as its own .glb file"
+
+    @classmethod
+    def poll(cls, context):
+        return any(o.type == "MESH" for o in context.selected_objects)
+
+    def execute(self, context):
+        objs = [o for o in context.selected_objects if o.type == "MESH"]
+        try:
+            paths = [pipeline.export(context, o) for o in objs]
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        context.scene.i23d.last_result = "Saved: " + ", ".join(p.name for p in paths)
+        self.report({"INFO"}, f"Saved {len(paths)} file(s) to {paths[0].parent}")
+        return {"FINISHED"}
+
+
+class I23D_OT_open_folder(bpy.types.Operator):
+    bl_idname = "i23d.open_folder"
+    bl_label = "Open Folder"
+    bl_description = "Show the export folder in Finder"
+
+    def execute(self, context):
+        folder = pipeline.export_dir(context)
+        folder.mkdir(parents=True, exist_ok=True)
+        bpy.ops.wm.path_open(filepath=str(folder))
+        return {"FINISHED"}
+
+
+class I23D_OT_open_log(bpy.types.Operator):
+    bl_idname = "i23d.open_log"
+    bl_label = "Open Log"
+    bl_description = "Open the full TRELLIS.2 output for the last run"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.scene.i23d.last_log) and Path(context.scene.i23d.last_log).is_file()
+
+    def execute(self, context):
+        bpy.ops.wm.path_open(filepath=context.scene.i23d.last_log)
+        return {"FINISHED"}
+
+
+class I23D_OT_dismiss_error(bpy.types.Operator):
+    bl_idname = "i23d.dismiss_error"
+    bl_label = "Dismiss"
+    bl_description = "Hide this message"
+
+    def execute(self, context):
+        context.scene.i23d.last_error = ""
+        return {"FINISHED"}
+
+
+class I23D_OT_check_setup(bpy.types.Operator):
+    bl_idname = "i23d.check_setup"
+    bl_label = "Check Setup"
+    bl_description = "Check that TRELLIS.2 is installed where the add-on expects it"
+
+    def execute(self, context):
+        problems = tr.check_setup(bpy.path.abspath(preferences.get(context).trellis_dir))
+        if problems:
+            for p in problems:
+                self.report({"ERROR"}, p)
+            return {"CANCELLED"}
+        self.report({"INFO"}, "TRELLIS.2 is ready.")
+        return {"FINISHED"}
+
+
+CLASSES = (I23D_OT_generate, I23D_OT_cancel, I23D_OT_clean, I23D_OT_apply_material,
+           I23D_OT_export, I23D_OT_open_folder, I23D_OT_open_log, I23D_OT_dismiss_error,
+           I23D_OT_check_setup)
+
+
+@bpy.app.handlers.persistent
+def _reset_after_load(_dummy):
+    """A file saved mid-run would otherwise reopen showing a stuck progress bar."""
+    if _job is None or not _job.is_running():
+        for scene in bpy.data.scenes:
+            if scene.i23d.is_running:
+                scene.i23d.is_running = False
+                scene.i23d.status = ""
+
+
+def register():
+    for cls in CLASSES:
+        bpy.utils.register_class(cls)
+    bpy.app.handlers.load_post.append(_reset_after_load)
+
+
+def unregister():
+    if _reset_after_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_reset_after_load)
+    if _job is not None:
+        _job.cancel()
+    for cls in reversed(CLASSES):
+        bpy.utils.unregister_class(cls)
