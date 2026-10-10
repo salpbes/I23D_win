@@ -91,9 +91,6 @@ class I23D_Settings(bpy.types.PropertyGroup):
         description="Like the Hugging Face page: every run gives a different take. The seed used is shown below")
     seed: IntProperty(name="Seed", default=42, min=0, max=2_147_483_647,
                       description="Same seed + same picture + same detail = same result")
-    fix_orientation: BoolProperty(
-        name="Stand upright", default=True,
-        description="TRELLIS.2 models import lying on their side; turn them upright")
     detail: EnumProperty(
         name="Rebuild detail",
         items=[("FINE", "Fine", "Keeps the thinnest details; slower"),

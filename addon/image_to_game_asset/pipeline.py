@@ -5,7 +5,6 @@ Operators call these functions; nothing here touches the UI.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import bpy
@@ -67,11 +66,9 @@ def import_original(context, glb_path: str | Path, name: str, image_path: str = 
         with context.temp_override(active_object=meshes[0], object=meshes[0],
                                    selected_objects=meshes, selected_editable_objects=meshes):
             bpy.ops.object.join()
+    # ComfyUI writes standard Y-up glTF, which Blender's import already stands upright (Z-up).
+    # (The Mac version's TRELLIS.2 files were Z-up and needed a turn; these must not get one.)
     obj = meshes[0]
-    if context.scene.i23d.fix_orientation:
-        # TRELLIS.2 files are Z-up, so Blender's glTF import lays them on their side.
-        obj.data.transform(Matrix.Rotation(math.radians(-90), 4, "X"))
-        obj.data.update()
     obj.name = f"{name}_original"
     obj.data.name = obj.name
     obj[ROLE] = "original"

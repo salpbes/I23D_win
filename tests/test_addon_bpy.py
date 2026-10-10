@@ -19,6 +19,10 @@ assert bpy.ops.i23d.check_setup() == {"FINISHED"}
 from image_to_game_asset import pipeline
 orig = pipeline.import_original(ctx, T + "/out/test.glb", "crown")
 print("imported:", orig.name, len(orig.data.polygons), [c.name for c in orig.users_collection])
+import numpy as np
+co = np.empty(len(orig.data.vertices) * 3); orig.data.vertices.foreach_get("co", co); co = co.reshape(-1, 3)
+span = co.max(0) - co.min(0)   # the crown is a ring 1 m across and 0.6 m tall, standing on Z
+assert span[2] < 0.7 and span[0] > 0.95 and span[1] > 0.95, f"imported on its side: {span.round(3)}"
 ctx.view_layer.objects.active = orig; orig.select_set(True)
 for budget in ("STANDARD", "LIGHT"):
     s.budget = budget

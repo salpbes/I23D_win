@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "image_to_game_asset"
-version = "2.1.0"
+version = "2.1.1"
 name = "Image to Game Asset"
 tagline = "Turn a picture into a clean, game-ready 3D model with TRELLIS.2"
 maintainer = "Alper Baskan"

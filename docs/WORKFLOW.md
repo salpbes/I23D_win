@@ -64,7 +64,6 @@ own object (`name_60k`, `name_15k`, `name_5k`).
 |---|---|---|
 | Detail (Standard/High) | TRELLIS.2's finer-shape step at 1024 or 1536 | High needs more graphics memory and time; not yet tested on 16 GB |
 | Seed | Fixed seed for repeatable results | To reproduce a result you liked |
-| Stand upright | Rotates TRELLIS.2 output upright | Off only if your model already stands up |
 | Rebuild detail | Fine / Normal / Coarse voxel size | *Fine* if thin parts (straps, rifle) disappear |
 | Thicken | How much thin shells are thickened | Raise if parts break apart |
 | Height / Ground | Resize to a height; stand on Z=0 | Match your game's units (three.js: 1 unit = 1 m) |

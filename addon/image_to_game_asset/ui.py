@@ -130,7 +130,6 @@ class I23D_PT_advanced(_Base, bpy.types.Panel):
         sub = col.row()
         sub.enabled = not s.random_seed
         sub.prop(s, "seed")
-        col.prop(s, "fix_orientation")
 
         col = layout.column(heading="Clean")
         col.prop(s, "detail")

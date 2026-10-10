@@ -10,7 +10,7 @@
 | "No news from ComfyUI for a long time" | Out of graphics memory, or the PC went to sleep | Task Manager › Performance › GPU; Cancel and try again |
 | "No textures" on the cleaned model | Viewport is in *Solid* mode | Switch to **Material Preview** |
 | Cleaned model is plain Clay | The original has no colours, or a plain preset is chosen | Choose *TRELLIS colours*, then press the 🎨 button |
-| Model lies on its side (every model) | TRELLIS.2 output is rotated | *Stand upright* (Advanced, on by default) |
+| Every model lies on its back, front facing up (add-on 2.0.0–2.1.0) | Those versions turned every model 90° (the Mac version's *Stand upright*), but ComfyUI's `.glb` already stands upright | Update to 2.1.1. For models already in a scene: show the hidden original (*Image→3D Originals*), select it, rotate it R X 90, press **Clean Selected** |
 | A flat object (axe, sword, shield) comes out lying flat | TRELLIS.2 picks the pose in its first step; a flat thing seen from the front can also be read as lying down seen from above. Seed-dependent: the same axe picture came out upright with one seed and flat with another | Generate again (new seed), or rotate it (R X 90) and press **Clean Selected** |
 | Washed-out colours | TRELLIS.2 colours can be pale | *Match photo colours* slider |
 | Thin parts vanish after cleaning | Voxel rebuild too coarse | *Rebuild detail: Fine* or raise *Thicken* |

@@ -37,7 +37,7 @@ C++ tools installed yet.
 | Time | **245 s** including first model load |
 | Peak VRAM | **11.5 GB of 16 GB** |
 | Result | 65 MB `.glb`, 691k triangles, UV-mapped, 4096² base colour + PBR textures |
-| Add-on *Clean* (unchanged code, Blender 5.2.2) | 691k → 15k triangles, watertight, on the ground, upright |
+| Add-on *Clean* (unchanged code, Blender 5.2.2) | 691k → 15k triangles, watertight, on the ground (but turned onto its back: fixed in 2.1.1) |
 | Add-on colours | fell back to Clay: no colour layer, the colours are in textures (see §5) |
 
 How the run was made:
