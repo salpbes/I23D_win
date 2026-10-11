@@ -22,7 +22,9 @@ Unity, …).
   mesh tidying and texture baking take most of the time.
 
 ### 2. Clean for games
-- **What:** makes a light copy of the original (e.g. `soldier_15k`) and keeps the original hidden.
+- **What:** makes a light copy of the original (e.g. `soldier_15k`) and puts the detailed original
+  away: it stays in the .blend file, but out of the scene, so Blender's own File › Export can't
+  add it to your `.glb`. Tick *Show detailed originals* to bring the originals back into view.
 - **When:** automatically after Generate (if *Clean automatically* is ticked), or press
   **Clean Selected** any time, e.g. to make a second size.
 - **Why:** AI models are huge (often 1–3 million triangles) and made of paper-thin, tangled shells.

@@ -31,7 +31,22 @@ for budget in ("STANDARD", "LIGHT"):
     print(budget, "->", s.last_result)
 g = bpy.data.objects["crown_5k"]
 print("objects:", sorted(o.name for o in bpy.data.objects))
-print("game props:", dict(g.items()), "mat:", g.data.materials[0].name, "hidden orig:", orig.hide_get())
+print("game props:", dict(g.items()), "mat:", g.data.materials[0].name,
+      "originals in scene:", pipeline.originals_shown(ctx.scene))
+# the cleaned original is kept in the file but out of the scene, so File > Export > glTF (defaults)
+# can't add its ~700k triangles to the export
+assert not pipeline.originals_shown(ctx.scene) and orig.name in bpy.data.objects
+assert orig.name not in ctx.scene.objects
+import json, struct
+p = T + "/file_export_defaults.glb"
+bpy.ops.export_scene.gltf(filepath=p, export_format="GLB")
+data = open(p, "rb").read(); nodes = [n.get("name") for n in json.loads(data[20:20 + struct.unpack_from("<I", data, 12)[0]])["nodes"]]
+print("File > Export (defaults):", nodes)
+assert "crown_original" not in nodes and "crown_5k" in nodes, nodes
+s.show_originals = True
+assert pipeline.originals_shown(ctx.scene) and orig.visible_get()
+s.show_originals = False
+assert not pipeline.originals_shown(ctx.scene) and orig.name not in ctx.scene.objects
 # re-run same budget replaces, from the game object as active
 ctx.view_layer.objects.active = g
 assert bpy.ops.i23d.clean() == {"FINISHED"}

@@ -102,6 +102,7 @@ def render(obj, file, lit=False):
     bpy.ops.render.render(write_still=True)
 
 
+s.show_originals = True
 original.hide_set(False)
 render(original, "e2e_original.png")
 render(game, "e2e_game_15k.png")

@@ -231,7 +231,7 @@ pie showData
    powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1
    ```
    Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** ›
-   pick `dist\image_to_game_asset-2.1.1.zip`. In its preferences press **Check Setup**.
+   pick `dist\image_to_game_asset-2.1.2.zip`. In its preferences press **Check Setup**.
 4. In Blender: 3D View › press **N** › **Image→3D** tab › pick a picture › **Generate**.
 
 Full guide: [docs/WORKFLOW.md](docs/WORKFLOW.md).

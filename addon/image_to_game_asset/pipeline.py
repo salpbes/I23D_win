@@ -36,6 +36,35 @@ def _move_to(obj, coll):
     coll.objects.link(obj)
 
 
+# The detailed originals (~700k triangles, 4096 textures each) are kept in the .blend file but out of
+# the scene once cleaned. Merely hidden objects still go into Blender's File > Export > glTF, which
+# then writes 100+ MB files; a collection that isn't linked to the scene is left out.
+def originals_shown(scene) -> bool:
+    coll = bpy.data.collections.get(ORIGINALS)
+    return coll is not None and coll.name in scene.collection.children
+
+
+def show_originals(scene, show: bool) -> None:
+    """Link the originals' collection to the scene (show) or keep it only in the file (hide)."""
+    coll = bpy.data.collections.get(ORIGINALS)
+    if coll is None:
+        return
+    coll.use_fake_user = True   # stays in the .blend while it isn't in any scene
+    if show and not originals_shown(scene):
+        scene.collection.children.link(coll)
+    elif not show and originals_shown(scene):
+        scene.collection.children.unlink(coll)
+
+
+def _put_away(context, source) -> None:
+    """After cleaning: take add-on originals out of the scene, hide anything else."""
+    coll = bpy.data.collections.get(ORIGINALS)
+    if coll is not None and source.name in coll.objects:
+        show_originals(context.scene, False)
+    elif source.name in context.view_layer.objects:
+        source.hide_set(True)
+
+
 def output_dir(context) -> Path:
     path = Path(bpy.path.abspath(preferences.get(context).output_dir)).expanduser()
     path.mkdir(parents=True, exist_ok=True)
@@ -75,7 +104,13 @@ def import_original(context, glb_path: str | Path, name: str, image_path: str = 
     obj[BASE] = name
     if image_path:
         obj["i23d_image"] = image_path      # the picture it came from (used for colour matching)
-    _move_to(obj, get_collection(context, ORIGINALS))
+    was_shown = originals_shown(context.scene)
+    coll = get_collection(context, ORIGINALS)
+    _move_to(obj, coll)
+    if not was_shown:   # bringing the collection back shows every earlier original: only show this one
+        for other in coll.objects:
+            if other is not obj and other.name in context.view_layer.objects:
+                other.hide_set(True)
     return obj
 
 
@@ -118,7 +153,7 @@ def clean(context, obj: bpy.types.Object) -> tuple[bpy.types.Object, dict]:
     game["i23d_to_final"] = [list(r) for r in stats.pop("to_final")]
     stats["colours"] = apply_look(context, game, source)
 
-    source.hide_set(True)
+    _put_away(context, source)
     for other in context.view_layer.objects:
         other.select_set(False)
     game.select_set(True)
@@ -143,12 +178,15 @@ def apply_look(context, game, source) -> str:
     to_final = Matrix([list(r) for r in game["i23d_to_final"]]) if "i23d_to_final" in game else Matrix.Identity(4)
     keep = game.matrix_world.copy()
     game.matrix_world = to_final.inverted()          # sit exactly on the original while baking
+    shown = originals_shown(context.scene)
+    show_originals(context.scene, True)              # the bake needs the original in the scene
     try:
         images = baking.bake_colours(context, source, game, size=int(s.texture_size),
                                      match_stats=stats, match_strength=s.colour_match if stats else 0.0,
                                      surface_maps=s.surface_maps, save_dir=output_dir(context) / "textures")
     finally:
         game.matrix_world = keep
+        show_originals(context.scene, shown)
     if s.colour_match > 0 and stats is None:
         note = "TRELLIS colours (photo not readable - no matching)"
     else:

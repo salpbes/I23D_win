@@ -21,6 +21,16 @@ def _on_image_change(self, context):
         self.asset_name = sanitize_name(Path(bpy.path.abspath(self.image_path)).stem)
 
 
+def _get_show_originals(self):
+    from . import pipeline
+    return pipeline.originals_shown(self.id_data)
+
+
+def _set_show_originals(self, value):
+    from . import pipeline
+    pipeline.show_originals(self.id_data, value)
+
+
 def _on_preset_change(self, context):
     preset = materials.PRESETS.get(self.material_preset)
     if preset:
@@ -63,6 +73,10 @@ class I23D_Settings(bpy.types.PropertyGroup):
         name="Metal, roughness & bumps", default=True,
         description="With TRELLIS colours from ComfyUI: also bake the original's metal/roughness "
                     "texture and a normal map of its fine detail (adds a few seconds to Clean)")
+    show_originals: BoolProperty(
+        name="Show detailed originals", get=_get_show_originals, set=_set_show_originals,
+        description="Bring the detailed TRELLIS.2 originals back into the scene (e.g. to rotate one and "
+                    "clean it again). While off they stay in the .blend file but out of File › Export")
     texture_size: EnumProperty(
         name="Texture size",
         items=[("1024", "1024", "Small file, mobile"), ("2048", "2048", "Good default"), ("4096", "4096", "Hero assets, big file")],

@@ -4,6 +4,7 @@ import textwrap
 
 import bpy
 
+from .pipeline import ORIGINALS
 from .properties import budget_tris
 
 CATEGORY = "Image→3D"
@@ -83,6 +84,8 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         big.scale_y = 1.3
         big.operator("i23d.clean", text=f"Clean Selected ({budget_tris(s):,} tris)", icon="BRUSH_DATA")
         big.operator("i23d.apply_material", text="", icon="MATERIAL")
+        if bpy.data.collections.get(ORIGINALS):
+            box.prop(s, "show_originals")
         if s.last_result:
             for chunk in s.last_result.split(" · "):
                 box.label(text=chunk)

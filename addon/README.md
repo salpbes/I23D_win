@@ -9,7 +9,7 @@ computer (127.0.0.1) and is started with `--offline`.
    `powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1`
 2. Build the add-on: `powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1`
 3. Blender: **Edit › Preferences › Get Extensions** › ⌄ menu (top right) › **Install from Disk…**
-   and pick `dist\image_to_game_asset-2.1.1.zip`.
+   and pick `dist\image_to_game_asset-2.1.2.zip`.
 4. In the add-on's preferences press **Check Setup**. Defaults:
    ComfyUI folder `%USERPROFILE%\I23D\ComfyUI_windows_portable`, output `%USERPROFILE%\I23D\output`.
 
