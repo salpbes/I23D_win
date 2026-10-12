@@ -2,7 +2,7 @@
 
 | Problem (what you see) | Why | Fix |
 |---|---|---|
-| **Check Setup:** "ComfyUI folder not found" or "Model file missing" | ComfyUI isn't installed where the add-on looks, or a download stopped | Run `scripts\install_comfyui.ps1` again (it continues where it stopped), or fix *ComfyUI folder* in the add-on preferences |
+| **Check Setup:** "ComfyUI folder not found" or "Model file missing" | ComfyUI isn't installed where the add-on looks, or a download stopped | Press **Install ComfyUI + TRELLIS.2** in the add-on preferences (again: it continues where it stopped), or fix *ComfyUI folder* there |
 | Stuck on "Starting ComfyUI" then "ComfyUI stopped while starting" | ComfyUI couldn't start (old NVIDIA driver, missing Visual C++ runtime, port in use) | Open `comfyui_log.txt` in the output folder. Update the NVIDIA driver; install https://aka.ms/vc14/vc_redist.x64.exe; or change *ComfyUI address* to another port |
 | "ComfyUI is not running at …" | *Start ComfyUI when needed* is off | Turn it on, or start ComfyUI yourself |
 | "KSampler: CUDA out of memory" | Not enough graphics memory | Close games, video tools and other ComfyUI windows; use **Standard** detail. Peak use is about 11.5 GB at Standard |

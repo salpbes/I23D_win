@@ -4,6 +4,7 @@ import textwrap
 
 import bpy
 
+from . import installer, preferences
 from .pipeline import ORIGINALS
 from .properties import budget_tris
 
@@ -107,6 +108,8 @@ class I23D_PT_main(_Base, bpy.types.Panel):
             err.label(text="Problem:", icon="ERROR")
             for line in textwrap.wrap(s.last_error, width=40)[:8]:
                 err.label(text=line)
+            if installer.last_problems:  # ComfyUI or its model files are missing
+                err.operator("i23d.install_comfy", icon="IMPORT")
             row = err.row(align=True)
             row.operator("i23d.open_log", icon="TEXT")
             row.operator("i23d.dismiss_error", icon="X")
@@ -150,6 +153,7 @@ class I23D_PT_advanced(_Base, bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("i23d.check_setup", icon="CHECKMARK")
         row.operator("i23d.stop_comfy", icon="X")
+        preferences.draw_setup_problems(layout)
         layout.label(text="Paths: Edit > Preferences > Add-ons", icon="PREFERENCES")
 
 

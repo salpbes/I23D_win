@@ -214,30 +214,37 @@ pie showData
 
 ## Quick start (Windows)
 
-1. **Get this repo** (or download it as a zip from GitHub):
-   ```bash
-   git clone https://github.com/salpbes/I23D_win.git
-   ```
-2. **Install ComfyUI + TRELLIS.2** (PowerShell, in the repo folder; ~11 GB download, first time only):
-   ```bash
-   powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1 -Check
-   ```
-   ```bash
-   powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1
-   ```
-   The first checks your PC and installs nothing. Everything goes into `%USERPROFILE%\I23D`.
-3. **Install the add-on:** download `image_to_game_asset-2.1.2.zip` from the
-   [latest release](https://github.com/salpbes/I23D_win/releases/latest) (don't unzip it), or build
-   it yourself into `dist\`:
-   ```bash
-   powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1
-   ```
-   Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** ›
-   pick the zip. In its preferences press **Check Setup**.
-
-   The zip is only the Blender panel. Step 2 is still needed once: it installs ComfyUI and the
-   TRELLIS.2 model files that the panel drives.
+1. **Download** `image_to_game_asset-2.2.0.zip` from the
+   [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
+2. **Install it:** Blender › Edit › Preferences › Get Extensions › ⌄ (top right) ›
+   **Install from Disk…** › pick the zip.
+3. **Install ComfyUI + TRELLIS.2:** in the add-on's preferences (Edit › Preferences › Add-ons ›
+   Image to Game Asset) press **Install ComfyUI + TRELLIS.2** and say yes. A window opens and
+   downloads about 11 GB into `%USERPROFILE%\I23D` (first time only, no account needed). Blender
+   stays usable meanwhile. When the window says **Done**, press **Check Setup**.
 4. In Blender: 3D View › press **N** › **Image→3D** tab › pick a picture › **Generate**.
+
+That zip is all you need: the installer ships inside it.
+
+<details>
+<summary>From the source code instead</summary>
+
+```bash
+git clone https://github.com/salpbes/I23D_win.git
+```
+Install ComfyUI + TRELLIS.2 from PowerShell in the repo folder (`-Check` only checks your PC and
+installs nothing):
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1 -Check
+```
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1
+```
+Build the add-on zip into `dist\` and install it as in step 2:
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1
+```
+</details>
 
 Full guide: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
@@ -245,7 +252,7 @@ Full guide: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 No. The picture, the AI work and the model all stay on your PC. The add-on talks to ComfyUI at
 `http://127.0.0.1:8188`, which other computers can't reach, and starts it with `--offline`
 (no paid online "partner" nodes, no web requests from its page). Internet is used only by the
-installer, to download ComfyUI and the model files once.
+installer (the **Install ComfyUI + TRELLIS.2** button), to download ComfyUI and the model files once.
 
 ## What's in this repo
 
@@ -257,9 +264,10 @@ addon/image_to_game_asset/   the Blender add-on (one job per file, see __init__.
   baking.py                    bake TRELLIS.2's colours, metal/roughness + normal maps onto the game mesh (+ photo colour match)
   materials.py / exporter.py   material presets / .glb export
   pipeline.py                  glue used by the buttons
+  install/install_comfyui.ps1  the ComfyUI + TRELLIS.2 installer (ships in the zip; installer.py starts it)
   properties.py / preferences.py / operators.py / ui.py   settings, buttons, panel
 scripts/
-  install_comfyui.ps1          one-shot installer: ComfyUI portable + TRELLIS.2 models
+  install_comfyui.ps1          runs the add-on's installer from the repo: ComfyUI portable + TRELLIS.2 models
   build_addon.ps1              packs the add-on into an installable zip
   make_addon_workflow.py       rebuilds workflows/ from ComfyUI's TRELLIS.2 template
   comfy_workflow_to_api.py     turns a ComfyUI editor workflow into the API format
@@ -279,7 +287,7 @@ docs/                        workflow, Windows findings, detailed characters, tr
 powershell -ExecutionPolicy Bypass -File tests\run_tests.ps1
 ```
 No graphics card needed: a fake ComfyUI stands in. They check progress, error messages, Cancel,
-starting/stopping ComfyUI, cleaning to budget, watertight results, colour baking accuracy (from
+starting/stopping ComfyUI, that the add-on zip carries its installer (and installs into Blender), cleaning to budget, watertight results, colour baking accuracy (from
 colour layers and from textures), metal/roughness and normal map baking, photo colour matching
 and `.glb` export with textures.
 

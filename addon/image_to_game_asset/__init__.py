@@ -10,6 +10,7 @@ Module map (each file has one job):
     pipeline.py        glue: import, organise, clean, export (used by operators)
     properties.py      the panel's settings
     preferences.py     where ComfyUI and the output folder live
+    installer.py       start install/install_comfyui.ps1 (sets up ComfyUI + TRELLIS.2) in its own window
     operators.py       buttons
     ui.py              sidebar panel (3D View > N > Image→3D)
 """

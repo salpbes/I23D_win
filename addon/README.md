@@ -5,13 +5,19 @@ Everything runs on your own PC: TRELLIS.2 runs inside a local ComfyUI that only 
 computer (127.0.0.1) and is started with `--offline`.
 
 ## Install
-1. Install ComfyUI and the TRELLIS.2 models once (about 11 GB of downloads):
-   `powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1`
-2. Build the add-on: `powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1`
-3. Blender: **Edit › Preferences › Get Extensions** › ⌄ menu (top right) › **Install from Disk…**
-   and pick `dist\image_to_game_asset-2.1.2.zip`.
-4. In the add-on's preferences press **Check Setup**. Defaults:
+1. Download `image_to_game_asset-2.2.0.zip` from the
+   [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
+2. Blender: **Edit › Preferences › Get Extensions** › ⌄ menu (top right) › **Install from Disk…**
+   and pick the zip.
+3. In the add-on's preferences press **Install ComfyUI + TRELLIS.2** and say yes. A window opens
+   and downloads ComfyUI and the TRELLIS.2 models (about 11 GB, first time only). Blender stays
+   usable. It is safe to press again: finished files are skipped, stopped downloads continue.
+4. When the window says **Done**, press **Check Setup**. Defaults:
    ComfyUI folder `%USERPROFILE%\I23D\ComfyUI_windows_portable`, output `%USERPROFILE%\I23D\output`.
+
+The installer is `install\install_comfyui.ps1` inside the add-on folder. You can also run it
+yourself: `powershell -ExecutionPolicy Bypass -File install_comfyui.ps1` (add `-Check` to only
+check your PC, or `-InstallDir <folder>` to install somewhere else).
 
 ## Use (3D View › press **N** › **Image→3D** tab)
 1. **Picture → 3D model** – pick a picture, press **Generate**. The first time, the add-on starts

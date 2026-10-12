@@ -46,5 +46,38 @@ foreach ($t in "test_ui_bpy", "test_quality_bpy", "test_addon_bpy", "test_colour
     Write-Host "-- $t"
     Invoke-Blender "$t.py"
 }
+Write-Host "== 3. The add-on zip is all a user needs (it carries the ComfyUI + TRELLIS.2 installer)"
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Here "..\scripts\build_addon.ps1") -OutDir (Join-Path $W "dist")
+if ($LASTEXITCODE -ne 0) { throw "build_addon.ps1 failed" }
+$Zip = Get-ChildItem (Join-Path $W "dist\image_to_game_asset-*.zip") | Select-Object -First 1 -ExpandProperty FullName
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::OpenRead($Zip)
+try { $entries = @($archive.Entries | ForEach-Object { $_.FullName }) } finally { $archive.Dispose() }
+foreach ($need in "blender_manifest.toml", "__init__.py", "installer.py", "README.md",
+                  "install/install_comfyui.ps1", "workflows/trellis2_image_to_glb.json") {
+    if ($entries -notcontains $need) { throw "$need is missing from $Zip" }
+}
+if ($entries -match "\|__pycache__") { throw "The zip has Windows-style paths or __pycache__ in it" }
+Write-Host "  zip has the installer and the workflow ($($entries.Count) files)"
+
+# Unpack it like Blender does and run the bundled installer's check (it downloads nothing with -Check).
+$Unpacked = Join-Path $W "unpacked\image_to_game_asset"
+[System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $Unpacked)
+$ErrorActionPreference = "Continue"
+$out = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Unpacked "install\install_comfyui.ps1") `
+    -Check -InstallDir (Join-Path $W "install_check") 2>&1 | ForEach-Object { "$_" }
+$code = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($out -match "workflow not found") { $out | Write-Host; throw "The unpacked installer can't find the add-on's workflow" }
+if ($code -eq 0 -and ($out -match "Check finished")) { Write-Host "  installer -Check from the unpacked zip: this PC is ready" }
+elseif ($code -ne 0 -and ($out -match "STOP")) {  # e.g. no NVIDIA card on a test machine: still found its files
+    Write-Host "  installer -Check from the unpacked zip ran; this PC fails its checks:" ($out -match "STOP")
+} else { $out | Write-Host; throw "installer -Check failed (code $code)" }
+if (Test-Path (Join-Path $W "install_check\ComfyUI_windows_portable")) { throw "-Check installed something" }
+
+# Install the zip into a throw-away Blender user folder, as Install from Disk would.
+$env:BLENDER_USER_RESOURCES = Join-Path $W "blender_user"
+try { Invoke-Blender "test_zip_bpy.py" @($Zip) } finally { Remove-Item Env:BLENDER_USER_RESOURCES }
+
 Write-Host ""
 Write-Host "ALL TESTS PASSED"

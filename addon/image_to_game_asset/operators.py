@@ -7,8 +7,9 @@ import random
 from pathlib import Path
 
 import bpy
+from bpy.props import BoolProperty
 
-from . import pipeline, preferences, trellis_runner as tr
+from . import installer, pipeline, preferences, trellis_runner as tr
 
 _job: tr.TrellisJob | None = None        # only one TRELLIS run at a time
 _server: tr.ComfyServer | None = None    # the ComfyUI this add-on started (if any)
@@ -68,6 +69,7 @@ class I23D_OT_generate(bpy.types.Operator):
         problems = [tr.check_image(image) if s.image_path else "Choose a picture first."]
         if not problems[0]:
             problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
+            installer.last_problems = problems
             if not problems and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
                 problems = [f"ComfyUI is not running at {prefs.comfy_url}. Start it, or turn on "
                             "'Start ComfyUI when needed' in the add-on preferences."]
@@ -291,6 +293,7 @@ class I23D_OT_check_setup(bpy.types.Operator):
     def execute(self, context):
         prefs = preferences.get(context)
         problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
+        installer.last_problems = problems
         if problems:
             for p in problems:
                 self.report({"ERROR"}, p)
@@ -300,9 +303,62 @@ class I23D_OT_check_setup(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class I23D_OT_install_comfy(bpy.types.Operator):
+    bl_idname = "i23d.install_comfy"
+    bl_label = "Install ComfyUI + TRELLIS.2"
+    bl_description = (f"Download and set up ComfyUI and the TRELLIS.2 model files (about "
+                      f"{installer.DOWNLOAD_GB} GB) in a separate window. Blender stays usable. "
+                      "Safe to run again: finished files are skipped")
+
+    check_only: BoolProperty(name="Only check this PC", options={"SKIP_SAVE", "HIDDEN"},
+                             description="Only check the graphics card, memory and disk; download nothing")
+
+    @classmethod
+    def poll(cls, context):
+        if installer.is_running():
+            cls.poll_message_set("The installer is already running in its own window")
+            return False
+        return True
+
+    def _folder(self, context):
+        return installer.install_dir_for(bpy.path.abspath(preferences.get(context).comfy_dir))
+
+    def invoke(self, context, event):
+        if self.check_only:
+            return self.execute(context)
+        return context.window_manager.invoke_props_dialog(
+            self, width=460, title="Install ComfyUI + TRELLIS.2", confirm_text="Download and Install")
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+        col.label(text=f"This downloads about {installer.DOWNLOAD_GB} GB (ComfyUI and the TRELLIS.2 "
+                       "model files) into:", icon="IMPORT")
+        col.label(text=f"    {self._folder(context)}")
+        col.separator()
+        col.label(text="It runs in its own window, where you can watch it.")
+        col.label(text="It can take an hour on a slow connection. Blender stays usable.")
+        col.label(text="When the window says Done, press Check Setup.")
+
+    def execute(self, context):
+        folder = self._folder(context)
+        try:
+            installer.start(folder, check_only=self.check_only)
+        except OSError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        if self.check_only:
+            self.report({"INFO"}, "Checking this PC in a separate window.")
+            return {"FINISHED"}
+        # The add-on looks for ComfyUI where the installer puts it.
+        preferences.get(context).comfy_dir = str(folder / installer.COMFY_FOLDER)
+        installer.last_problems = []
+        self.report({"INFO"}, "Installing in a separate window. When it says Done, press Check Setup.")
+        return {"FINISHED"}
+
+
 CLASSES = (I23D_OT_generate, I23D_OT_cancel, I23D_OT_stop_comfy, I23D_OT_clean,
            I23D_OT_apply_material, I23D_OT_export, I23D_OT_open_folder, I23D_OT_open_log,
-           I23D_OT_dismiss_error, I23D_OT_check_setup)
+           I23D_OT_dismiss_error, I23D_OT_check_setup, I23D_OT_install_comfy)
 
 
 @bpy.app.handlers.persistent

@@ -4,6 +4,21 @@ Picture → **TRELLIS.2** (AI makes a detailed 3D model) → **Clean** (light, s
 **Colours** (TRELLIS.2's colours baked into one texture) → **Export** (`.glb` for three.js, Godot,
 Unity, …).
 
+## Setting up (once)
+1. Download `image_to_game_asset-2.2.0.zip` from the
+   [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
+2. Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** › pick
+   the zip.
+3. In the add-on's preferences press **Install ComfyUI + TRELLIS.2** and say yes.
+   - **What:** downloads ComfyUI (about 2 GB) and the TRELLIS.2 model files (about 9 GB) into
+     `%USERPROFILE%\I23D`. No account needed.
+   - **Why a separate window:** the download can take an hour on a slow connection. The window
+     shows each file as it arrives, and Blender stays usable.
+   - **Safe to press again:** finished files are skipped and stopped downloads continue. Use it
+     after an interrupted download too.
+4. When the window says **Done**, press **Check Setup**. If it finds something missing, it says
+   what, and shows the Install button again.
+
 ## The three steps in the panel (3D View › press **N** › **Image→3D**)
 
 ### 1. Picture → 3D model
@@ -90,7 +105,8 @@ own object (`name_60k`, `name_15k`, `name_5k`).
 ## Folder layout created on Windows
 ```
 %USERPROFILE%\I23D\
-  ComfyUI_windows_portable\   ComfyUI + its Python + TRELLIS.2 models (scripts\install_comfyui.ps1)
+  ComfyUI_windows_portable\   ComfyUI + its Python + TRELLIS.2 models (Install ComfyUI + TRELLIS.2)
+  install_log.txt             what the installer did
   output\                     <name>.glb originals, <name>_log.txt, comfyui_log.txt
     game-ready\               exported game models
     textures\                 baked textures (.png): _basecolor, _metallicroughness, _normal

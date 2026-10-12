@@ -1,15 +1,16 @@
-"""Add-on preferences: where ComfyUI lives, how to reach it, and where models are saved."""
+"""Add-on preferences: where ComfyUI lives, how to reach it, where models are saved, and installing it."""
 
-from pathlib import Path
+import textwrap
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
 
+from . import installer
 from .trellis_runner import DEFAULT_URL
 
 ADDON_ID = __package__
 
-_HOME = Path.home() / "I23D"
+_HOME = installer.HOME
 
 
 class I23D_Preferences(bpy.types.AddonPreferences):
@@ -17,9 +18,9 @@ class I23D_Preferences(bpy.types.AddonPreferences):
 
     comfy_dir: StringProperty(
         name="ComfyUI folder",
-        description="The ComfyUI_windows_portable folder made by the install script",
+        description="The ComfyUI_windows_portable folder made by Install ComfyUI + TRELLIS.2",
         subtype="DIR_PATH",
-        default=str(_HOME / "ComfyUI_windows_portable"),
+        default=str(_HOME / installer.COMFY_FOLDER),
     )
     comfy_url: StringProperty(
         name="ComfyUI address",
@@ -48,7 +49,33 @@ class I23D_Preferences(bpy.types.AddonPreferences):
         row.prop(self, "start_comfy")
         row.prop(self, "keep_comfy")
         layout.prop(self, "output_dir")
-        layout.operator("i23d.check_setup", icon="CHECKMARK")
+        row = layout.row()
+        row.operator("i23d.check_setup", icon="CHECKMARK")
+        row.operator("i23d.install_comfy", icon="IMPORT")
+        draw_setup_problems(layout, width=110, install_button=False)
+
+
+def draw_setup_problems(layout, width=40, install_button=True):
+    """What the last Check Setup found missing, and the button that fixes it."""
+    if installer.is_running():
+        layout.label(text="The installer is running in its own window. When it says Done, "
+                          "press Check Setup.", icon="TIME")
+        return
+    if not installer.last_problems:
+        return
+    box = layout.box()
+    col = box.column(align=True)
+    col.alert = True
+    for i, problem in enumerate(installer.last_problems[:3]):
+        for j, line in enumerate(textwrap.wrap(problem, width=width)):
+            col.label(text=line, icon="ERROR" if i == j == 0 else "BLANK1")
+    if len(installer.last_problems) > 3:
+        col.label(text=f"...and {len(installer.last_problems) - 3} more", icon="BLANK1")
+    for i, line in enumerate(textwrap.wrap(f"Not set up yet? Install ComfyUI + TRELLIS.2 downloads "
+                                           f"it all (about {installer.DOWNLOAD_GB} GB).", width=width)):
+        box.label(text=line, icon="INFO" if i == 0 else "BLANK1")
+    if install_button:
+        box.operator("i23d.install_comfy", icon="IMPORT")
 
 
 def get(context=None) -> I23D_Preferences:
