@@ -226,12 +226,17 @@ pie showData
    powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1
    ```
    The first checks your PC and installs nothing. Everything goes into `%USERPROFILE%\I23D`.
-3. **Build and install the add-on:**
+3. **Install the add-on:** download `image_to_game_asset-2.1.2.zip` from the
+   [latest release](https://github.com/salpbes/I23D_win/releases/latest) (don't unzip it), or build
+   it yourself into `dist\`:
    ```bash
    powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1
    ```
    Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** ›
-   pick `dist\image_to_game_asset-2.1.2.zip`. In its preferences press **Check Setup**.
+   pick the zip. In its preferences press **Check Setup**.
+
+   The zip is only the Blender panel. Step 2 is still needed once: it installs ComfyUI and the
+   TRELLIS.2 model files that the panel drives.
 4. In Blender: 3D View › press **N** › **Image→3D** tab › pick a picture › **Generate**.
 
 Full guide: [docs/WORKFLOW.md](docs/WORKFLOW.md).
