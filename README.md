@@ -322,3 +322,25 @@ Licences in this repo:
   Blender add-ons must use a GPL-compatible licence because they use Blender's Python API.
 
 Third-party models have their own licences and terms.
+
+## Disclaimer
+
+This project is free software, provided **"as is", without warranty of any kind**. Its licences
+already say so: the MIT licence (`LICENSE`) and the GPL-3.0-or-later licence of the add-on
+(`addon/image_to_game_asset/LICENSE`, sections 15 and 16). In plain words:
+
+- **You are responsible for how you use it.** The authors and contributors are not liable for any
+  misuse of this add-on, of the AI models it runs, or of the 3D models it makes, nor for any loss
+  or damage that comes from using them.
+- **Use only pictures you have the right to use.** Respect other people's copyright, trademarks,
+  designs and likeness. A generated model can look very much like its picture, so the rights in
+  the picture can also apply to the model.
+- **Follow the law and the third-party licences.** TRELLIS.2, ComfyUI, BiRefNet and DINOv3 each have
+  their own licence and terms, and some limit how their output may be used. Check them before you
+  sell or publish what you make.
+- **Check what the AI makes.** Its output can be wrong or unexpected. Look over every model before
+  you use it in a game, product or anything other people rely on.
+- **Don't use it to make anything illegal, harmful or deceptive**, or anything that infringes
+  someone else's rights.
+
+This summary is not legal advice. Where it and the licence texts differ, the licence texts apply.

@@ -57,3 +57,11 @@ add-on started ComfyUI. Exports go to `<output folder>\game-ready` unless you ch
 - One object, plain or transparent background, seen slightly from the side and above.
 - Close other programs that use the graphics card while generating (games, video editors).
 - If cleaning loses thin parts, set **Advanced › Rebuild detail** to *Fine* or raise **Thicken**.
+
+## Disclaimer
+Provided "as is", without warranty of any kind (see `LICENSE`, sections 15 and 16). You are
+responsible for how you use the add-on, the AI models it runs and the 3D models it makes: use
+only pictures you have the right to use, follow the law and the third-party licences (TRELLIS.2,
+ComfyUI, BiRefNet, DINOv3), and check every model before you rely on it. The authors are not
+liable for any misuse or for any loss or damage from using it. Full text:
+https://github.com/salpbes/I23D_win#disclaimer

@@ -140,6 +140,7 @@ by itself.
 
 - Smaller or bigger models, other colours, every setting: [WORKFLOW.md](WORKFLOW.md)
 - Something went wrong: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- Before you sell or publish what you make: read the [Disclaimer](../README.md#disclaimer)
 
 <sub>Screenshots: Blender 5.2.2 on Windows 11 with an RTX 5060 Ti 16 GB. The picture is ComfyUI's
 example axe.</sub>
