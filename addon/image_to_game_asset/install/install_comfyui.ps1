@@ -22,6 +22,7 @@ param(
     [switch]$Pause                       # wait for Enter at the end (the add-on's button uses this)
 )
 $ErrorActionPreference = "Stop"
+try { $Host.UI.RawUI.WindowTitle = "Install ComfyUI + TRELLIS.2" } catch {}
 # The add-on's workflow lists the model files to download. It sits next to this folder: install\..\workflows
 $Workflow = Join-Path (Split-Path -Parent $PSScriptRoot) "workflows\trellis2_image_to_glb.json"
 $Comfy = Join-Path $InstallDir "ComfyUI_windows_portable"
