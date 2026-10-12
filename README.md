@@ -15,7 +15,12 @@ in about 2½ minutes.</sub>
 | **Tested on** | Windows 11, NVIDIA RTX 5060 Ti 16 GB, Ryzen 9 3900X, 64 GB memory, Blender 5.2.2 LTS |
 | **How TRELLIS.2 runs** | ComfyUI v0.39.0 portable, started by the add-on with `--offline`, listening on 127.0.0.1 only |
 | **Time per model** | under 3 minutes at Standard detail (1024), including starting ComfyUI; peak graphics memory 11.5 GB |
-| **Needs** | NVIDIA card with 16 GB (12 GB may work), ~25 GB free disk, no Hugging Face account |
+| **Needs** | Windows 10/11, NVIDIA card with 16 GB (12 GB may work), ~25 GB free disk, Blender 4.2 or newer; no account of any kind |
+
+**Get started:** download `image_to_game_asset-2.2.0.zip` from the
+[latest release](https://github.com/salpbes/I23D_win/releases/latest), then follow
+[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md): every click, with screenshots, from the download
+to your first `.glb`. No Blender experience needed. The short version is in [Quick start](#quick-start-windows).
 
 ## How it works, in one picture
 
@@ -225,7 +230,8 @@ with screenshots, from the download to your first `.glb`.
    Image to Game Asset) press **Install ComfyUI + TRELLIS.2** and say yes. A window opens and
    downloads about 11 GB into `%USERPROFILE%\I23D` (first time only, no account needed). Blender
    stays usable meanwhile. When the window says **Done**, press **Check Setup**.
-4. In Blender: 3D View › press **N** › **Image→3D** tab › pick a picture › **Generate**.
+4. In Blender: 3D View › press **N** › **Image→3D** tab › pick a picture › **Generate 3D Model**,
+   then **Export .glb**. The file goes to `%USERPROFILE%\I23D\output\game-ready`.
 
 That zip is all you need: the installer ships inside it.
 
@@ -249,7 +255,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build_addon.ps1
 ```
 </details>
 
-Full guide: [docs/WORKFLOW.md](docs/WORKFLOW.md).
+Every step and setting explained: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 ## Is anything sent online?
 No. The picture, the AI work and the model all stay on your PC. The add-on talks to ComfyUI at
@@ -267,7 +273,8 @@ addon/image_to_game_asset/   the Blender add-on (one job per file, see __init__.
   baking.py                    bake TRELLIS.2's colours, metal/roughness + normal maps onto the game mesh (+ photo colour match)
   materials.py / exporter.py   material presets / .glb export
   pipeline.py                  glue used by the buttons
-  install/install_comfyui.ps1  the ComfyUI + TRELLIS.2 installer (ships in the zip; installer.py starts it)
+  install/install_comfyui.ps1  the ComfyUI + TRELLIS.2 installer (ships in the zip)
+  installer.py                 starts it in its own window (the Install ComfyUI + TRELLIS.2 button)
   properties.py / preferences.py / operators.py / ui.py   settings, buttons, panel
 scripts/
   install_comfyui.ps1          runs the add-on's installer from the repo: ComfyUI portable + TRELLIS.2 models
@@ -291,9 +298,10 @@ docs/                        getting started (with screenshots), workflow, Windo
 powershell -ExecutionPolicy Bypass -File tests\run_tests.ps1
 ```
 No graphics card needed: a fake ComfyUI stands in. They check progress, error messages, Cancel,
-starting/stopping ComfyUI, that the add-on zip carries its installer (and installs into Blender), cleaning to budget, watertight results, colour baking accuracy (from
-colour layers and from textures), metal/roughness and normal map baking, photo colour matching
-and `.glb` export with textures.
+starting/stopping ComfyUI, that the add-on zip carries its installer (and installs into Blender),
+cleaning to budget, watertight results, colour baking accuracy (from colour layers and from
+textures), metal/roughness and normal map baking, photo colour matching and `.glb` export with
+textures.
 
 With the real ComfyUI and TRELLIS.2 (about 4 minutes, uses the graphics card):
 ```bash
