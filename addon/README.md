@@ -5,6 +5,8 @@ Everything runs on your own PC: TRELLIS.2 runs inside a local ComfyUI that only 
 computer (127.0.0.1) and is started with `--offline`.
 
 ## Install
+Step by step with screenshots: https://github.com/salpbes/I23D_win/blob/main/docs/GETTING_STARTED.md
+
 1. Download `image_to_game_asset-2.2.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender: **Edit › Preferences › Get Extensions** › ⌄ menu (top right) › **Install from Disk…**

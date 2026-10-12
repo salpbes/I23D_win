@@ -5,6 +5,8 @@ Picture → **TRELLIS.2** (AI makes a detailed 3D model) → **Clean** (light, s
 Unity, …).
 
 ## Setting up (once)
+First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with screenshots.
+
 1. Download `image_to_game_asset-2.2.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** › pick

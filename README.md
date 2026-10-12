@@ -214,6 +214,9 @@ pie showData
 
 ## Quick start (Windows)
 
+New to Blender? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) walks through every click,
+with screenshots, from the download to your first `.glb`.
+
 1. **Download** `image_to_game_asset-2.2.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. **Install it:** Blender › Edit › Preferences › Get Extensions › ⌄ (top right) ›
@@ -273,10 +276,11 @@ scripts/
   comfy_workflow_to_api.py     turns a ComfyUI editor workflow into the API format
 tools/photo_texture/         experimental photo-fitting helpers (see its README)
 tests/                       automatic tests with a fake ComfyUI, plus a real end-to-end test
-docs/                        workflow, Windows findings, detailed characters, troubleshooting
+docs/                        getting started (with screenshots), workflow, Windows findings, detailed characters, troubleshooting
 ```
 
 ## Documentation
+- [GETTING_STARTED.md](docs/GETTING_STARTED.md): from download to your first `.glb`, with screenshots
 - [WORKFLOW.md](docs/WORKFLOW.md): every step and setting, in plain words
 - [WINDOWS.md](docs/WINDOWS.md): how the Windows route was chosen and tested
 - [DETAILED_CHARACTERS.md](docs/DETAILED_CHARACTERS.md): better faces and feet with zoom-in crops
