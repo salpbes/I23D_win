@@ -7,19 +7,23 @@ Unity, …).
 ## Setting up (once)
 First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with screenshots.
 
-1. Download `image_to_game_asset-2.2.0.zip` from the
+1. Download `image_to_game_asset-2.3.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** › pick
    the zip.
-3. In the add-on's preferences press **Install ComfyUI + TRELLIS.2** and say yes.
+3. 3D View › press **N** › **Image→3D** tab. While ComfyUI or a TRELLIS.2 file is missing, the
+   panel starts with a **One-time setup** box. Press **Install ComfyUI + TRELLIS.2** there (or in
+   the add-on's preferences) and say yes.
    - **What:** downloads ComfyUI (about 2 GB) and the TRELLIS.2 model files (about 9 GB) into
      `%USERPROFILE%\I23D`. No account needed.
    - **Why a separate window:** the download can take an hour on a slow connection. The window
-     shows each file as it arrives, and Blender stays usable.
+     shows each file as it arrives; the panel shows one progress bar for all of it (the
+     installer writes `install_progress.json` for that). Blender stays usable.
    - **Safe to press again:** finished files are skipped and stopped downloads continue. Use it
-     after an interrupted download too.
-4. When the window says **Done**, press **Check Setup**. If it finds something missing, it says
-   what, and shows the Install button again.
+     after an interrupted download too. If the window is closed early, the panel says so.
+4. At the end Blender runs **Check Setup** by itself and says **Setup finished**. If something is
+   missing, it says what, with the Install button next to it. Already run your own ComfyUI? Press
+   *Already have it? Check Setup* in the setup box instead.
 
 ## The three steps in the panel (3D View › press **N** › **Image→3D**)
 
@@ -37,6 +41,9 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
   (rough shape, detailed shape, finer shape, surface colours) → building, tidying and unwrapping
   the mesh → baking its textures → saving. TRELLIS.2 itself takes under a minute; ComfyUI's
   mesh tidying and texture baking take most of the time.
+- **Afterwards:** the 3D view switches from plain grey to Material Preview, so you see the
+  colours, and turns to the new model. Don't want that? Untick *Show the new model in colour* in
+  the add-on preferences. (It leaves wireframe and rendered views alone.)
 
 ### 2. Clean for games
 - **What:** makes a light copy of the original (e.g. `soldier_15k`) and puts the detailed original

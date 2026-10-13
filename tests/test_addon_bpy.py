@@ -16,6 +16,26 @@ s = ctx.scene.i23d
 s.image_path = T + "/picture.png"; assert s.asset_name == "picture", s.asset_name
 s.material_preset = "GOLD"; assert abs(s.metallic-1)<1e-6 and abs(s.color[0]-0.83)<1e-3
 assert bpy.ops.i23d.check_setup() == {"FINISHED"}
+# The sidebar's one-time setup box shows only while ComfyUI or a model file is missing
+from image_to_game_asset import installer, operators, preferences as pf
+assert installer.check_passed and not pf.setup_missing(prefs) and prefs.show_result
+prefs.comfy_dir = T + "/no_comfy_here/ComfyUI_windows_portable"  # a new folder needs a new check
+assert not installer.check_passed and pf.setup_missing(prefs)
+prefs.comfy_dir = T + "/ComfyUI_windows_portable"
+assert not pf.setup_missing(prefs)
+# When the installer window closes, Blender checks the setup by itself (or says how to carry on)
+import json, pathlib
+progress = pathlib.Path(T) / installer.PROGRESS_FILE
+def installer_ended(state, message):
+    progress.write_text(json.dumps({"state": state, "message": message, "current": -1, "files": []}))
+    installer._process, installer._progress_path = None, progress
+    return operators._watch_installer()
+installer.last_problems, installer.check_passed = ["old"], False
+assert installer_ended("done", "Everything is installed") is None
+assert installer.last_problems == [] and installer.check_passed and installer.note_ok
+installer_ended("downloading", "Downloading the AI model files (1 of 5)")
+assert "carries on" in installer.note, installer.note
+installer.note = ""
 from image_to_game_asset import pipeline
 orig = pipeline.import_original(ctx, T + "/out/test.glb", "crown")
 print("imported:", orig.name, len(orig.data.polygons), [c.name for c in orig.users_collection])

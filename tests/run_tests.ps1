@@ -39,6 +39,8 @@ Write-Host "== 1. Runner against a fake ComfyUI (no Blender needed)"
 Invoke-Blender "make_messy.py" @((Join-Path $W "messy.glb"))   # a deliberately messy "AI" model
 & $Python -I (Join-Path $Here "test_runner.py") $W
 if ($LASTEXITCODE -ne 0) { throw "test_runner.py failed" }
+& $Python -I (Join-Path $Here "test_installer.py") $W
+if ($LASTEXITCODE -ne 0) { throw "test_installer.py failed" }
 
 Write-Host "== 2. Add-on inside Blender ($Blender)"
 foreach ($t in "test_ui_bpy", "test_quality_bpy", "test_addon_bpy", "test_colours_bpy", "test_texture_colours_bpy",

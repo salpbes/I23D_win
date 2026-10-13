@@ -77,13 +77,19 @@ def check_setup(comfy_dir: str | os.PathLike, url: str = DEFAULT_URL,
         missing = [m for m in workflow["models"]
                    if m["file"] not in _get_json(url, f"/models/{m['folder']}", default=[])]
         return [f"ComfyUI is missing the model file {m['folder']}/{m['file']}" for m in missing]
+    return check_folder(comfy_dir, workflow)
+
+
+def check_folder(comfy_dir: str | os.PathLike, workflow: dict | None = None) -> list[str]:
+    """Like check_setup, but only looks at the ComfyUI folder (quick: no network)."""
+    workflow = workflow or load_workflow()
     root = Path(comfy_dir).expanduser()
     if not root.is_dir():
         return [f"ComfyUI folder not found: {root}"]
     problems = []
     if not comfy_python(root).is_file() or not comfy_main(root).is_file():
         problems.append("This is not a ComfyUI portable folder (python_embeded or ComfyUI\\main.py "
-                        "missing) - run the install script first.")
+                        "missing) - press Install ComfyUI + TRELLIS.2 first.")
     models = root / "ComfyUI" / "models"
     for m in workflow["models"]:
         if not (models / m["folder"] / m["file"]).is_file():

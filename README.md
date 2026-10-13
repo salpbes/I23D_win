@@ -17,7 +17,7 @@ in about 2½ minutes.</sub>
 | **Time per model** | under 3 minutes at Standard detail (1024), including starting ComfyUI; peak graphics memory 11.5 GB |
 | **Needs** | Windows 10/11, NVIDIA card with 16 GB (12 GB may work), ~25 GB free disk, Blender 4.2 or newer; no account of any kind |
 
-**Get started:** download `image_to_game_asset-2.2.0.zip` from the
+**Get started:** download `image_to_game_asset-2.3.0.zip` from the
 [latest release](https://github.com/salpbes/I23D_win/releases/latest), then follow
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md): every click, with screenshots, from the download
 to your first `.glb`. No Blender experience needed. The short version is in [Quick start](#quick-start-windows).
@@ -222,16 +222,17 @@ pie showData
 New to Blender? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) walks through every click,
 with screenshots, from the download to your first `.glb`.
 
-1. **Download** `image_to_game_asset-2.2.0.zip` from the
+1. **Download** `image_to_game_asset-2.3.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. **Install it:** Blender › Edit › Preferences › Get Extensions › ⌄ (top right) ›
    **Install from Disk…** › pick the zip.
-3. **Install ComfyUI + TRELLIS.2:** in the add-on's preferences (Edit › Preferences › Add-ons ›
-   Image to Game Asset) press **Install ComfyUI + TRELLIS.2** and say yes. A window opens and
-   downloads about 11 GB into `%USERPROFILE%\I23D` (first time only, no account needed). Blender
-   stays usable meanwhile. When the window says **Done**, press **Check Setup**.
-4. In Blender: 3D View › press **N** › **Image→3D** tab › pick a picture › **Generate 3D Model**,
-   then **Export .glb**. The file goes to `%USERPROFILE%\I23D\output\game-ready`.
+3. **Install ComfyUI + TRELLIS.2:** 3D View › press **N** › **Image→3D** tab. Its **One-time
+   setup** box has the **Install ComfyUI + TRELLIS.2** button; press it and say yes. It downloads
+   about 11 GB into `%USERPROFILE%\I23D` (first time only, no account needed) in its own window,
+   while the panel shows a progress bar and Blender stays usable. At the end Blender checks the
+   setup by itself and says **Setup finished**.
+4. Pick a picture › **Generate 3D Model**. The model appears in colour, centred in the view.
+   Then **Export .glb**: the file goes to `%USERPROFILE%\I23D\output\game-ready`.
 
 That zip is all you need: the installer ships inside it.
 
@@ -262,6 +263,7 @@ No. The picture, the AI work and the model all stay on your PC. The add-on talks
 `http://127.0.0.1:8188`, which other computers can't reach, and starts it with `--offline`
 (no paid online "partner" nodes, no web requests from its page). Internet is used only by the
 installer (the **Install ComfyUI + TRELLIS.2** button), to download ComfyUI and the model files once.
+The add-on only reads the installer's progress from a file on your PC.
 
 ## What's in this repo
 
@@ -274,7 +276,7 @@ addon/image_to_game_asset/   the Blender add-on (one job per file, see __init__.
   materials.py / exporter.py   material presets / .glb export
   pipeline.py                  glue used by the buttons
   install/install_comfyui.ps1  the ComfyUI + TRELLIS.2 installer (ships in the zip)
-  installer.py                 starts it in its own window (the Install ComfyUI + TRELLIS.2 button)
+  installer.py                 starts it in its own window and follows its progress (the Install button)
   properties.py / preferences.py / operators.py / ui.py   settings, buttons, panel
 scripts/
   install_comfyui.ps1          runs the add-on's installer from the repo: ComfyUI portable + TRELLIS.2 models

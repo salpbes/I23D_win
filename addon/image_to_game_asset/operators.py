@@ -40,6 +40,50 @@ def _redraw(context):
                 area.tag_redraw()
 
 
+def _show_result(context, obj):
+    """Aim the 3D views at the new model and show its colours (otherwise a beginner sees a plain
+    grey model, often off to the side)."""
+    if context.window is None or not preferences.get(context).show_result:
+        return
+    for other in context.selected_objects:
+        other.select_set(False)
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+    for area in context.window.screen.areas:
+        if area.type != "VIEW_3D":
+            continue
+        space = area.spaces.active
+        if space.shading.type == "SOLID":  # leave wireframe and rendered views as the user set them
+            space.shading.type = "MATERIAL"
+        region = next((r for r in area.regions if r.type == "WINDOW"), None)
+        with context.temp_override(window=context.window, area=area, region=region):
+            bpy.ops.view3d.view_selected()
+
+
+def _redraw_everywhere():
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            area.tag_redraw()
+
+
+def _watch_installer():
+    """Timer while the installer window works: keeps its progress bar moving, then runs Check Setup."""
+    _redraw_everywhere()
+    result = installer.finish()
+    if result is None:
+        return 1.0 if installer.working() else None
+    if result.state == "done":
+        prefs = preferences.get(bpy.context)
+        problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
+        installer.last_problems, installer.check_passed = problems, not problems
+        installer.note, installer.note_ok = ("", False) if problems else (
+            "Setup finished: ComfyUI and TRELLIS.2 are ready. Pick a picture and press Generate.", True)
+    else:
+        installer.note, installer.note_ok = result.message, False
+    _redraw_everywhere()
+    return None
+
+
 def _clean_and_maybe_export(op, context, obj):
     s = context.scene.i23d
     game, stats = pipeline.clean(context, obj)
@@ -69,7 +113,7 @@ class I23D_OT_generate(bpy.types.Operator):
         problems = [tr.check_image(image) if s.image_path else "Choose a picture first."]
         if not problems[0]:
             problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
-            installer.last_problems = problems
+            installer.last_problems, installer.check_passed = problems, not problems
             if not problems and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
                 problems = [f"ComfyUI is not running at {prefs.comfy_url}. Start it, or turn on "
                             "'Start ComfyUI when needed' in the add-on preferences."]
@@ -78,6 +122,7 @@ class I23D_OT_generate(bpy.types.Operator):
             self.report({"ERROR"}, problems[0])
             return {"CANCELLED"}
 
+        installer.note = ""
         self._name = tr.sanitize_name(s.asset_name or Path(image).stem)
         s.asset_name = self._name
         out_dir = pipeline.output_dir(context)
@@ -141,11 +186,13 @@ class I23D_OT_generate(bpy.types.Operator):
         try:
             original = pipeline.import_original(context, glb, self._name, bpy.path.abspath(s.image_path))
             s.status = "Model imported"
+            result = original
             if s.auto_clean:
                 s.status = "Cleaning for games..."
                 _redraw(context)
-                _clean_and_maybe_export(self, context, original)
+                result = _clean_and_maybe_export(self, context, original)
             s.status = f"Done (seed {s.seed})"
+            _show_result(context, result)
         except Exception as exc:  # show any Blender-side problem in the panel
             s.status, s.last_error = "Failed after generating", str(exc)
             self.report({"ERROR"}, str(exc))
@@ -293,7 +340,8 @@ class I23D_OT_check_setup(bpy.types.Operator):
     def execute(self, context):
         prefs = preferences.get(context)
         problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
-        installer.last_problems = problems
+        installer.last_problems, installer.check_passed = problems, not problems
+        installer.note = ""
         if problems:
             for p in problems:
                 self.report({"ERROR"}, p)
@@ -315,7 +363,7 @@ class I23D_OT_install_comfy(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if installer.is_running():
+        if installer.working():
             cls.poll_message_set("The installer is already running in its own window")
             return False
         return True
@@ -337,7 +385,7 @@ class I23D_OT_install_comfy(bpy.types.Operator):
         col.separator()
         col.label(text="It runs in its own window, where you can watch it.")
         col.label(text="It can take an hour on a slow connection. Blender stays usable.")
-        col.label(text="When the window says Done, press Check Setup.")
+        col.label(text="Blender shows its progress and checks the setup when it is done.")
 
     def execute(self, context):
         folder = self._folder(context)
@@ -352,7 +400,10 @@ class I23D_OT_install_comfy(bpy.types.Operator):
         # The add-on looks for ComfyUI where the installer puts it.
         preferences.get(context).comfy_dir = str(folder / installer.COMFY_FOLDER)
         installer.last_problems = []
-        self.report({"INFO"}, "Installing in a separate window. When it says Done, press Check Setup.")
+        if not bpy.app.timers.is_registered(_watch_installer):
+            bpy.app.timers.register(_watch_installer, first_interval=1.0)
+        self.report({"INFO"}, "Installing in a separate window. Blender shows its progress and "
+                              "checks the setup when it's done.")
         return {"FINISHED"}
 
 
@@ -379,6 +430,8 @@ def register():
 
 
 def unregister():
+    if bpy.app.timers.is_registered(_watch_installer):
+        bpy.app.timers.unregister(_watch_installer)
     if _reset_after_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_reset_after_load)
     if _job is not None:

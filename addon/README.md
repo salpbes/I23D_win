@@ -7,14 +7,15 @@ computer (127.0.0.1) and is started with `--offline`.
 ## Install
 Step by step with screenshots: https://github.com/salpbes/I23D_win/blob/main/docs/GETTING_STARTED.md
 
-1. Download `image_to_game_asset-2.2.0.zip` from the
+1. Download `image_to_game_asset-2.3.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender: **Edit › Preferences › Get Extensions** › ⌄ menu (top right) › **Install from Disk…**
    and pick the zip.
-3. In the add-on's preferences press **Install ComfyUI + TRELLIS.2** and say yes. A window opens
-   and downloads ComfyUI and the TRELLIS.2 models (about 11 GB, first time only). Blender stays
+3. 3D View › press **N** › **Image→3D** tab › **One-time setup** › **Install ComfyUI + TRELLIS.2**
+   (also in the add-on's preferences), and say yes. A window opens and downloads ComfyUI and the
+   TRELLIS.2 models (about 11 GB, first time only); the panel shows its progress. Blender stays
    usable. It is safe to press again: finished files are skipped, stopped downloads continue.
-4. When the window says **Done**, press **Check Setup**. Defaults:
+4. At the end Blender checks the setup by itself and says **Setup finished**. Defaults:
    ComfyUI folder `%USERPROFILE%\I23D\ComfyUI_windows_portable`, output `%USERPROFILE%\I23D\output`.
 
 The installer is `install\install_comfyui.ps1` inside the add-on folder. You can also run it
@@ -24,7 +25,9 @@ check your PC, or `-InstallDir <folder>` to install somewhere else).
 ## Use (3D View › press **N** › **Image→3D** tab)
 1. **Picture → 3D model** – pick a picture, press **Generate**. The first time, the add-on starts
    ComfyUI in the background (about 30 s). A model takes under 3 minutes on an RTX 5060 Ti 16 GB.
-   Blender stays usable; the bar shows each step.
+   Blender stays usable; the bar shows each step. When it's done, the view switches to colour
+   (Material Preview) and turns to the new model; turn that off with *Show the new model in
+   colour* in the preferences.
 2. **Clean for games** – choose a triangle budget, press **Clean Selected**.
    Colours default to **TRELLIS colours**: TRELLIS.2's colour texture is baked onto the light model.
    **Match photo colours**: 0 = pure TRELLIS colours, 1 = brightness/tint matched to the picture.

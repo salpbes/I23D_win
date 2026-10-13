@@ -17,6 +17,25 @@ class _Base:
     bl_category = CATEGORY
 
 
+def _draw_setup(layout, context):
+    """Top of the panel: the one-time setup while ComfyUI or TRELLIS.2 is missing, the installer's
+    progress while it runs, or what went wrong."""
+    if preferences.draw_setup_status(layout):
+        return
+    if not preferences.setup_missing(preferences.get(context)):
+        return
+    box = layout.box()
+    box.label(text="One-time setup", icon="IMPORT")
+    col = box.column(align=True)
+    col.label(text="TRELLIS.2, the AI that makes the")
+    col.label(text="models, isn't installed yet.")
+    col.label(text=f"About {installer.DOWNLOAD_GB} GB, no account needed.")
+    big = box.row()
+    big.scale_y = 1.5
+    big.operator("i23d.install_comfy", icon="IMPORT")
+    box.operator("i23d.check_setup", text="Already have it? Check Setup", icon="CHECKMARK")
+
+
 class I23D_PT_main(_Base, bpy.types.Panel):
     bl_idname = "I23D_PT_main"
     bl_label = "Image to Game Asset"
@@ -24,6 +43,7 @@ class I23D_PT_main(_Base, bpy.types.Panel):
     def draw(self, context):
         s = context.scene.i23d
         layout = self.layout
+        _draw_setup(layout, context)
 
         # 1. Picture -> model
         box = layout.box()
@@ -108,8 +128,6 @@ class I23D_PT_main(_Base, bpy.types.Panel):
             err.label(text="Problem:", icon="ERROR")
             for line in textwrap.wrap(s.last_error, width=40)[:8]:
                 err.label(text=line)
-            if installer.last_problems:  # ComfyUI or its model files are missing
-                err.operator("i23d.install_comfy", icon="IMPORT")
             row = err.row(align=True)
             row.operator("i23d.open_log", icon="TEXT")
             row.operator("i23d.dismiss_error", icon="X")
@@ -153,7 +171,6 @@ class I23D_PT_advanced(_Base, bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("i23d.check_setup", icon="CHECKMARK")
         row.operator("i23d.stop_comfy", icon="X")
-        preferences.draw_setup_problems(layout)
         layout.label(text="Paths: Edit > Preferences > Add-ons", icon="PREFERENCES")
 
 

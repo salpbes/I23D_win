@@ -29,12 +29,30 @@ $Comfy = Join-Path $InstallDir "ComfyUI_windows_portable"
 
 function Ok($t)   { Write-Host "  OK    $t" -ForegroundColor Green }
 function Warn($t) { Write-Host "  WARN  $t" -ForegroundColor Yellow }
-function Stop($t) { Write-Host "  STOP  $t" -ForegroundColor Red; exit 1 }
+function Stop($t) { Write-Host "  STOP  $t" -ForegroundColor Red; Report "failed" $t; exit 1 }
 function Step($t) { Write-Host ""; Write-Host "=== $t ===" }
+
+# Progress for the add-on: Blender reads this file to show a progress bar while this window works.
+$ProgressFile = Join-Path $InstallDir "install_progress.json"
+$Downloads = @()   # what has to be downloaded: name, url, path (where it grows), size
+$Current = -1      # which of $Downloads is being worked on
+function Report($state, $message) {
+    if ($Check) { return }
+    $files = @($Downloads | ForEach-Object { [ordered]@{ name = $_.name; path = $_.path; size = $_.size } })
+    $json = [ordered]@{ state = $state; message = $message; current = $script:Current; files = $files } |
+        ConvertTo-Json -Depth 4 -Compress
+    [IO.File]::WriteAllText("$ProgressFile.tmp", $json)
+    Move-Item -Force "$ProgressFile.tmp" $ProgressFile
+}
+function Get-DownloadSize($url) {
+    $len = & curl.exe -sIL --max-time 30 $url | Select-String -Pattern '^content-length:\s*(\d+)' | Select-Object -Last 1
+    if ($len) { [int64]$len.Matches[0].Groups[1].Value } else { [int64]0 }
+}
 
 New-Item -ItemType Directory -Force $InstallDir | Out-Null
 Start-Transcript -Append -Path (Join-Path $InstallDir "install_log.txt") | Out-Null
 try {
+Report "checking" "Checking this PC"
 
 # -----------------------------------------------------------------------------
 Step "1. Checking this PC"
@@ -71,22 +89,38 @@ else { Write-Host "  To download: $($missing.Count) of $($models.Count) TRELLIS.
 
 if ($Check) { Write-Host ""; Write-Host "Check finished. Nothing was installed."; return }
 
+# What has to be downloaded, and how big each file is (so Blender can show one progress bar).
+$archive = Join-Path $InstallDir "ComfyUI_windows_portable_nvidia.7z"
+$comfyUrl = "https://github.com/Comfy-Org/ComfyUI/releases/download/$ComfyVersion/ComfyUI_windows_portable_nvidia.7z"
+if (-not $haveComfy) { $Downloads += [pscustomobject]@{ name = "ComfyUI"; url = $comfyUrl; path = $archive } }
+foreach ($m in $missing) {
+    $Downloads += [pscustomobject]@{ name = $m.file; url = $m.url
+        path = (Join-Path $Comfy "ComfyUI\models\$($m.folder)\$($m.file).part") }
+}
+if ($Downloads.Count) {
+    Report "checking" "Asking for the download sizes"
+    foreach ($d in $Downloads) { $d | Add-Member size (Get-DownloadSize $d.url) }
+    Write-Host "  Download size: $([math]::Round(($Downloads | Measure-Object size -Sum).Sum / 1GB, 1)) GB in total"
+}
+
 # -----------------------------------------------------------------------------
 Step "2. ComfyUI $ComfyVersion (portable, NVIDIA)"
 if ($haveComfy) {
     Ok "Already there: $Comfy"
 } else {
-    $archive = Join-Path $InstallDir "ComfyUI_windows_portable_nvidia.7z"
-    $url = "https://github.com/Comfy-Org/ComfyUI/releases/download/$ComfyVersion/ComfyUI_windows_portable_nvidia.7z"
+    $Current++
+    Report "downloading" "Downloading ComfyUI ($($Current + 1) of $($Downloads.Count))"
     Write-Host "  Downloading (about 2 GB)..."
-    & curl.exe -fL -C - --retry 5 -o $archive $url
+    & curl.exe -fL -C - --retry 5 -o $archive $comfyUrl
     if ($LASTEXITCODE -ne 0) { Stop "Download failed (curl code $LASTEXITCODE). Re-run to continue." }
+    Report "unpacking" "Unpacking ComfyUI"
     Write-Host "  Unpacking..."
     & $tar -xf $archive -C $InstallDir
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $Comfy "python_embeded\python.exe"))) { Stop "Unpacking failed." }
     Remove-Item $archive
     Ok "Installed: $Comfy"
 }
+Report "checking" "Checking that PyTorch sees the graphics card"
 $torch = & (Join-Path $Comfy "python_embeded\python.exe") -s -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
 if ($torch -match "True") { Ok "PyTorch sees the graphics card: $torch" } else { Stop "PyTorch can't use the graphics card ($torch). Update the NVIDIA driver." }
 
@@ -97,6 +131,8 @@ foreach ($m in $models) {
     $file = Join-Path $dir $m.file
     if (Test-Path $file) { Ok "$($m.folder)\$($m.file)"; continue }
     New-Item -ItemType Directory -Force $dir | Out-Null
+    $Current++
+    Report "downloading" "Downloading the AI model files ($($Current + 1) of $($Downloads.Count))"
     Write-Host "  Downloading $($m.folder)\$($m.file)..."
     & curl.exe -fL -C - --retry 5 -o "$file.part" $m.url
     if ($LASTEXITCODE -ne 0) { Stop "Download failed (curl code $LASTEXITCODE). Re-run to continue." }
@@ -105,6 +141,7 @@ foreach ($m in $models) {
 }
 
 New-Item -ItemType Directory -Force (Join-Path $InstallDir "output") | Out-Null
+Report "done" "Everything is installed"
 
 # -----------------------------------------------------------------------------
 Step "Done"
