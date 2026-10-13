@@ -60,6 +60,14 @@ assert check.notes[0].text.startswith("The picture is small") and check.notes[-1
 # (Background Blender makes no preview icons, so check.icon_id stays 0 here.)
 assert check.cutout == Done.cutout_path and not check.error
 assert ops.picture_check_for(ctx) is check and bpy.ops.i23d.view_cutout.poll()
+assert bpy.ops.i23d.generate.poll()
+
+class Busy(Done):  # a check still removing the background: Generate waits for it
+    def is_running(self):
+        return True
+ops._check = ops.PictureCheck(image=check.image, job=Busy())
+assert not bpy.ops.i23d.generate.poll(), "Generate must wait for the picture check"
+ops._check = check
 s.image_path = T + "/other.png"
 assert ops.picture_check_for(ctx) is None, "a new picture needs a new check"
 assert len(bpy.data.images) == 0, "reading the mask left an image behind"

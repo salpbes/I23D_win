@@ -208,6 +208,13 @@ class I23D_OT_generate(bpy.types.Operator):
                       "(under 3 minutes). Blender stays usable")
     bl_options = {"REGISTER"}
 
+    @classmethod
+    def poll(cls, context):
+        if _check is not None and _check.running:
+            cls.poll_message_set("Wait a moment: the picture is still being checked")
+            return False
+        return True
+
     def execute(self, context):
         global _job
         s = context.scene.i23d

@@ -42,11 +42,17 @@ def _wrapped(layout, text, icon, width=34):
 
 
 def _draw_picture_check(layout, context):
-    """Under the picture: its cut-out as TRELLIS.2 will see it, and what may go wrong."""
+    """Under the picture: its cut-out as TRELLIS.2 will see it, and what may go wrong. While a
+    model is being made, the finished cut-out and its notes stay, with View Larger."""
     s = context.scene.i23d
-    if not s.image_path or s.is_running:
+    if not s.image_path:
         return
     check = operators.picture_check_for(context)
+    if s.is_running:
+        if check is not None and not check.running and not check.error:
+            _draw_cutout(layout, check)
+            layout.operator("i23d.view_cutout", icon="ZOOM_IN")
+        return
     if check is None:
         layout.operator("i23d.check_picture", icon="VIEWZOOM")
         return
@@ -58,15 +64,19 @@ def _draw_picture_check(layout, context):
         _wrapped(col, check.error, "ERROR")
         layout.operator("i23d.check_picture", text="Check Again", icon="FILE_REFRESH")
         return
+    _draw_cutout(layout, check)
+    row = layout.row(align=True)
+    row.operator("i23d.view_cutout", icon="ZOOM_IN")
+    row.operator("i23d.check_picture", text="", icon="FILE_REFRESH")
+
+
+def _draw_cutout(layout, check):
     if check.icon_id:
         col = layout.column()
         col.template_icon(icon_value=check.icon_id, scale=9)
     col = layout.column(align=True)
     for note in check.notes:
         _wrapped(col, note.text, "CHECKMARK" if note.good else "ERROR")
-    row = layout.row(align=True)
-    row.operator("i23d.view_cutout", icon="ZOOM_IN")
-    row.operator("i23d.check_picture", text="", icon="FILE_REFRESH")
 
 
 class I23D_PT_main(_Base, bpy.types.Panel):
