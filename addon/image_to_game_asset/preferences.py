@@ -49,7 +49,7 @@ class I23D_Preferences(bpy.types.AddonPreferences):
     show_result: BoolProperty(
         name="Show the new model in colour", default=True,
         description="After Generate, switch the 3D view from plain grey to Material Preview and "
-                    "centre it on the new model")
+                    "centre it on the new model (remembered for every file)")
 
     def draw(self, context):
         layout = self.layout
@@ -59,7 +59,6 @@ class I23D_Preferences(bpy.types.AddonPreferences):
         row.prop(self, "start_comfy")
         row.prop(self, "keep_comfy")
         layout.prop(self, "output_dir")
-        layout.prop(self, "show_result")
         row = layout.row()
         row.operator("i23d.check_setup", icon="CHECKMARK")
         row.operator("i23d.install_comfy", icon="IMPORT")

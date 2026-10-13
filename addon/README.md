@@ -29,7 +29,7 @@ check your PC, or `-InstallDir <folder>` to install somewhere else).
    ComfyUI in the background (about 30 s). A model takes under 3 minutes on an RTX 5060 Ti 16 GB.
    Blender stays usable; the bar shows each step. When it's done, the view switches to colour
    (Material Preview) and turns to the new model; turn that off with *Show the new model in
-   colour* in the preferences.
+   colour* above the Generate button.
 2. **Clean for games** – choose a triangle budget, press **Clean Selected**.
    Colours default to **TRELLIS colours**: TRELLIS.2's colour texture is baked onto the light model.
    **Match photo colours**: 0 = pure TRELLIS colours, 1 = brightness/tint matched to the picture.

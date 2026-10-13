@@ -101,6 +101,8 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         row.prop(s, "auto_clean")
         if s.auto_clean:
             box.row().prop(s, "auto_export")
+        # Stored in the preferences, so it holds for every .blend file.
+        box.row().prop(preferences.get(context), "show_result")
 
         if s.is_running:
             box.progress(factor=s.progress, type="BAR", text=s.status or "Working...")

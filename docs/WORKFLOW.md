@@ -49,8 +49,8 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
   the mesh → baking its textures → saving. TRELLIS.2 itself takes under a minute; ComfyUI's
   mesh tidying and texture baking take most of the time.
 - **Afterwards:** the 3D view switches from plain grey to Material Preview, so you see the
-  colours, and turns to the new model. Don't want that? Untick *Show the new model in colour* in
-  the add-on preferences. (It leaves wireframe and rendered views alone.)
+  colours, and turns to the new model. Don't want that? Untick *Show the new model in colour* above
+  the Generate button. (It leaves wireframe and rendered views alone.)
 
 ### 2. Clean for games
 - **What:** makes a light copy of the original (e.g. `soldier_15k`) and puts the detailed original
