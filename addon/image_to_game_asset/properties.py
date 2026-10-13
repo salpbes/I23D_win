@@ -19,6 +19,9 @@ def budget_tris(settings) -> int:
 def _on_image_change(self, context):
     if self.image_path:
         self.asset_name = sanitize_name(Path(bpy.path.abspath(self.image_path)).stem)
+        if self.check_picture and not bpy.app.background:
+            from . import operators
+            operators.start_picture_check(context)
 
 
 def _get_show_originals(self):
@@ -45,6 +48,10 @@ class I23D_Settings(bpy.types.PropertyGroup):
         description="One object on a plain or transparent background (.png, .jpg, .webp)")
     asset_name: StringProperty(
         name="Name", description="Used for the object and file names (filled in from the picture)")
+    check_picture: BoolProperty(
+        name="Check the picture when chosen", default=True,
+        description="Show the picture with its background removed, as TRELLIS.2 will see it, and "
+                    "say if something may go wrong (takes seconds once ComfyUI is running)")
     auto_clean: BoolProperty(
         name="Clean automatically", default=True,
         description="Clean the model for games as soon as it is generated")

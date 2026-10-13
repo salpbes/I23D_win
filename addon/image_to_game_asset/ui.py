@@ -4,7 +4,7 @@ import textwrap
 
 import bpy
 
-from . import installer, preferences
+from . import installer, operators, preferences
 from .pipeline import ORIGINALS
 from .properties import budget_tris
 
@@ -36,6 +36,39 @@ def _draw_setup(layout, context):
     box.operator("i23d.check_setup", text="Already have it? Check Setup", icon="CHECKMARK")
 
 
+def _wrapped(layout, text, icon, width=34):
+    for i, line in enumerate(textwrap.wrap(text, width=width)):
+        layout.label(text=line, icon=icon if i == 0 else "BLANK1")
+
+
+def _draw_picture_check(layout, context):
+    """Under the picture: its cut-out as TRELLIS.2 will see it, and what may go wrong."""
+    s = context.scene.i23d
+    if not s.image_path or s.is_running:
+        return
+    check = operators.picture_check_for(context)
+    if check is None:
+        layout.operator("i23d.check_picture", icon="VIEWZOOM")
+        return
+    if check.running:
+        layout.label(text=f"Checking the picture: {check.job.label}", icon="TIME")
+        return
+    if check.error:
+        col = layout.column(align=True)
+        _wrapped(col, check.error, "ERROR")
+        layout.operator("i23d.check_picture", text="Check Again", icon="FILE_REFRESH")
+        return
+    if check.icon_id:
+        col = layout.column()
+        col.template_icon(icon_value=check.icon_id, scale=9)
+    col = layout.column(align=True)
+    for note in check.notes:
+        _wrapped(col, note.text, "CHECKMARK" if note.good else "ERROR")
+    row = layout.row(align=True)
+    row.operator("i23d.view_cutout", icon="ZOOM_IN")
+    row.operator("i23d.check_picture", text="", icon="FILE_REFRESH")
+
+
 class I23D_PT_main(_Base, bpy.types.Panel):
     bl_idname = "I23D_PT_main"
     bl_label = "Image to Game Asset"
@@ -52,6 +85,7 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         col.enabled = not s.is_running
         col.prop(s, "image_path", text="")
         col.prop(s, "asset_name")
+        _draw_picture_check(box, context)
         row = box.row()
         row.enabled = not s.is_running
         row.prop(s, "auto_clean")
@@ -150,6 +184,7 @@ class I23D_PT_advanced(_Base, bpy.types.Panel):
         col.prop(s, "quality")
         if s.quality != "1024":
             col.label(text="Not yet tested on 16 GB cards", icon="ERROR")
+        col.prop(s, "check_picture")
         col.prop(s, "random_seed")
         sub = col.row()
         sub.enabled = not s.random_seed

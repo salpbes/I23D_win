@@ -86,12 +86,29 @@ Install button to fix it.
 A new Blender scene starts with a grey cube in the middle, exactly where your model will appear.
 Click the cube, press **X**, then **Delete**.
 
-### 9. Pick a picture
+### 9. Pick a picture and look at its check
 
 In the **Image→3D** panel, click the folder icon next to the empty picture box and choose your
 picture. The name fills itself in.
 
-![The Image→3D tab with a picture chosen](images/getting_started/08_pick_a_picture.png)
+A few seconds later (the first time about half a minute, while ComfyUI starts) the panel shows
+your picture with its background removed, exactly as TRELLIS.2 will see it, and says whether it
+looks good. Press **View Larger** to see it in its own window; scroll there to zoom.
+
+![The panel showing the cut-out of the axe: Looks good](images/getting_started/08_pick_a_picture.png)
+
+If the panel warns about something, a better picture usually gives a better model:
+
+- **Several separate pieces:** TRELLIS.2 makes one model of everything it sees. Use a picture
+  of one object.
+- **Touches the edge:** part of the object is outside the picture and will be guessed. Leave a
+  little space around it.
+- **Small object or small picture:** crop closer to the object, or use a bigger picture.
+- **The cut-out lost parts or kept background:** use a picture with a plainer background.
+
+You can still press Generate anyway.
+
+![The panel warning that the cut-out has 2 separate pieces](images/getting_started/08b_picture_warning.png)
 
 ### 10. Press "Generate 3D Model"
 

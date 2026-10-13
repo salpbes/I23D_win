@@ -164,6 +164,33 @@ def build_prompt(workflow: dict, image_name: str, *, seed: int, detail: str, pre
     return prompt
 
 
+def _upstream(prompt: dict, outputs) -> dict:
+    """The part of a prompt that the given output nodes need (they and everything feeding them)."""
+    keep, todo = set(), list(outputs)
+    while todo:
+        nid = todo.pop()
+        if nid in keep:
+            continue
+        keep.add(nid)
+        todo += [v[0] for v in prompt[nid]["inputs"].values() if isinstance(v, list) and len(v) == 2]
+    return {nid: node for nid, node in prompt.items() if nid in keep}
+
+
+def build_cutout_prompt(workflow: dict, image_name: str) -> tuple[dict, str, str]:
+    """Only the workflow's first steps: remove the background and crop to the object, exactly as
+    TRELLIS.2 gets it. Returns the prompt and the ids of the cut-out and mask preview nodes."""
+    prompt = copy.deepcopy(workflow["prompt"])
+    crop = next(k for k, n in prompt.items() if n["class_type"] == "ImageCropToMask")
+    cutout = next(k for k, n in prompt.items()
+                  if n["class_type"] == "PreviewImage" and n["inputs"].get("images") == [crop, 0])
+    mask = next(k for k, n in prompt.items() if n["class_type"] == "MaskPreview")
+    prompt = _upstream(prompt, [cutout, mask])
+    for node in prompt.values():
+        if node["class_type"] == "LoadImage":
+            node["inputs"]["image"] = image_name
+    return prompt, cutout, mask
+
+
 def describe_prompt_error(err: dict) -> str:
     """Turn ComfyUI's 'prompt rejected' answer into one readable line."""
     for node_id, info in (err.get("node_errors") or {}).items():
@@ -415,9 +442,7 @@ class TrellisJob:
             ws = WebSocket(self.url, f"/ws?clientId={client_id}")  # before queueing: miss nothing
             self.label = "Sending the picture to ComfyUI"
             image_name = upload_image(self.url, self.image)
-            prompt = build_prompt(self.workflow, image_name, seed=self.seed, detail=self.detail,
-                                  prefix=f"i23d/{self.out_base.name}")
-            self._say(f"picture {self.image} -> {image_name}, seed {self.seed}, detail {self.detail}")
+            prompt = self._make_prompt(image_name)
             self.prompt_id = self._queue(prompt, client_id)
             self._follow(ws, ProgressTracker(prompt))
         except Exception as exc:  # shown in the panel
@@ -430,6 +455,11 @@ class TrellisJob:
             if self._log:
                 self._log.close()
                 self._log = None
+
+    def _make_prompt(self, image_name: str) -> dict:
+        self._say(f"picture {self.image} -> {image_name}, seed {self.seed}, detail {self.detail}")
+        return build_prompt(self.workflow, image_name, seed=self.seed, detail=self.detail,
+                            prefix=f"i23d/{self.out_base.name}")
 
     def _ensure_server(self) -> None:
         if server_up(self.url):
@@ -521,19 +551,22 @@ class TrellisJob:
         files = [f for out in entry.get("outputs", {}).values() for f in out.get("3d", [])]
         if not files:
             raise RuntimeError("ComfyUI finished but saved no 3D file.")
-        f = files[0]
+        target = self._fetch(files[0], self.out_base.with_suffix(".glb"))
+        self.glb_path = str(target)
+        self.fraction, self.label = 1.0, "Model saved"
+        self._say(f"saved {target} ({target.stat().st_size / 1e6:.1f} MB)")
+
+    def _fetch(self, f: dict, target: Path) -> Path:
+        """Download one of ComfyUI's output files."""
         query = urllib.parse.urlencode({"filename": f["filename"], "subfolder": f.get("subfolder", ""),
                                         "type": f.get("type", "output")})
-        target = self.out_base.with_suffix(".glb")
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(target.name + ".part")
         with urllib.request.urlopen(f"{self.url}/view?{query}", timeout=120) as r, open(tmp, "wb") as out:
             while chunk := r.read(1 << 20):
                 out.write(chunk)
         tmp.replace(target)
-        self.glb_path = str(target)
-        self.fraction, self.label = 1.0, "Model saved"
-        self._say(f"saved {target} ({target.stat().st_size / 1e6:.1f} MB)")
+        return target
 
     def _stop_remote(self) -> None:
         """Cancel: stop our job in ComfyUI (if it's running) and drop it from the queue."""
@@ -546,3 +579,40 @@ class TrellisJob:
             _post_json(self.url, "/queue", {"delete": [self.prompt_id]})
         except OSError as exc:
             self._say(f"cancel: {exc}")
+
+
+class CutoutJob(TrellisJob):
+    """Only the first steps of a run: the picture with its background removed, cropped the way
+    TRELLIS.2 will see it, plus its mask. Takes seconds once ComfyUI is up.
+
+    Read .cutout_path and .mask_path (PNG files) when it ends without .error.
+    """
+
+    def __init__(self, *, url: str, image, out_base, log_path=None, server: ComfyServer | None = None,
+                 workflow: dict | None = None):
+        super().__init__(url=url, image=image, out_base=out_base, log_path=log_path, server=server,
+                         workflow=workflow)
+        self.cutout_path: str | None = None
+        self.mask_path: str | None = None
+        self._nodes: tuple[str, str] = ("", "")
+
+    def _make_prompt(self, image_name: str) -> dict:
+        self._say(f"cut-out of {self.image} -> {image_name}")
+        prompt, cutout, mask = build_cutout_prompt(self.workflow, image_name)
+        self._nodes = (cutout, mask)
+        return prompt
+
+    def _download(self, entry: dict | None = None) -> None:
+        self.label = "Copying the cut-out"
+        if entry is None:
+            entry = _get_json(self.url, f"/history/{self.prompt_id}", timeout=30)[self.prompt_id]
+        outputs = entry.get("outputs", {})
+        paths = []
+        for node, suffix in zip(self._nodes, ("_cutout.png", "_mask.png")):
+            images = outputs.get(node, {}).get("images", [])
+            if not images:
+                raise RuntimeError("ComfyUI finished but made no cut-out.")
+            paths.append(str(self._fetch(images[0], self.out_base.with_name(self.out_base.name + suffix))))
+        self.cutout_path, self.mask_path = paths
+        self.fraction, self.label = 1.0, "Cut-out ready"
+        self._say(f"saved {self.cutout_path}")

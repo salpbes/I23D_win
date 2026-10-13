@@ -131,6 +131,21 @@ try:
     assert time.time() - t < 6
     assert "cancelling" in (out / "cancel_log.txt").read_text()
 
+    # ---- picture check: only background removal + crop, and their two previews come back
+    cut_prompt, cut_node, mask_node = tr.build_cutout_prompt(tr.load_workflow(), "x.png")
+    assert {n["class_type"] for n in cut_prompt.values()} == {
+        "LoadImage", "LoadBackgroundRemovalModel", "RemoveBackground", "MaskPreview", "ImageCropToMask",
+        "PreviewImage"}, "the check must not run any TRELLIS.2 step"
+    job = tr.CutoutJob(url=url, image=picture, out_base=out / "previews" / "picture",
+                       log_path=out / "previews" / "check_log.txt")
+    job.start()
+    job.wait(20)
+    assert not job.is_running() and job.error is None, job.error
+    assert job.cutout_path.endswith("picture_cutout.png") and job.mask_path.endswith("picture_mask.png")
+    assert Path(job.cutout_path).read_bytes()[:4] == b"\x89PNG" and Path(job.mask_path).is_file()
+    assert job.fraction == 1.0 and job.label == "Cut-out ready"
+    print("picture check OK")
+
     # ---- quiet timer
     job = tr.TrellisJob(url=url, image=picture, out_base=out / "q")
     assert job.quiet_for() == 0 and job.elapsed() == 0

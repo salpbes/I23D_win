@@ -34,6 +34,13 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
 - **Why in the background:** it takes under 3 minutes on an RTX 5060 Ti 16 GB, including starting
   ComfyUI the first time. Blender stays usable, and a progress bar ("Step 2 of 4: detailed
   shape (45%)") plus a "last news Xs ago" line show it's alive.
+- **Picture check:** as soon as you pick a picture, the panel shows it with its background
+  removed, cropped exactly as TRELLIS.2 will see it, and says in plain words if something may go
+  wrong: no object found, several separate pieces, the object touching the edge of the picture,
+  a small object or a small picture. **View Larger** opens it in its own window. It runs only
+  ComfyUI's background-removal step, so it takes seconds once ComfyUI is running. The files go
+  to `<output folder>\previews`. Turn it off with *Advanced › Check the picture when chosen*;
+  the **Check Picture** button still works.
 - **How:** pick the picture, press **Generate**. *Random seed* is on by default, so every run gives
   a different guess for parts the picture can't show (e.g. the back). If a result looks wrong,
   just run it again.

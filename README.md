@@ -231,7 +231,8 @@ with screenshots, from the download to your first `.glb`.
    about 11 GB into `%USERPROFILE%\I23D` (first time only, no account needed) in its own window,
    while the panel shows a progress bar and Blender stays usable. At the end Blender checks the
    setup by itself and says **Setup finished**.
-4. Pick a picture › **Generate 3D Model**. The model appears in colour, centred in the view.
+4. Pick a picture: the panel shows it with its background removed and says if it looks good.
+   Press **Generate 3D Model**. The model appears in colour, centred in the view.
    Then **Export .glb**: the file goes to `%USERPROFILE%\I23D\output\game-ready`.
 
 That zip is all you need: the installer ships inside it.

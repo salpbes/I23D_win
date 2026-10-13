@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import atexit
 import random
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import bpy
+import bpy.utils.previews
+import numpy as np
 from bpy.props import BoolProperty
 
-from . import installer, pipeline, preferences, trellis_runner as tr
+from . import installer, picture_check, pipeline, preferences, trellis_runner as tr
 
 _job: tr.TrellisJob | None = None        # only one TRELLIS run at a time
 _server: tr.ComfyServer | None = None    # the ComfyUI this add-on started (if any)
@@ -80,6 +83,110 @@ def _watch_installer():
             "Setup finished: ComfyUI and TRELLIS.2 are ready. Pick a picture and press Generate.", True)
     else:
         installer.note, installer.note_ok = result.message, False
+    _redraw_everywhere()
+    return None
+
+
+# ---------------------------------------------------------------- picture check
+@dataclass
+class PictureCheck:
+    image: str                                  # the picture checked (absolute path)
+    job: tr.CutoutJob | None = None
+    notes: list = field(default_factory=list)   # picture_check.Note
+    error: str = ""
+    icon_id: int = 0                            # the cut-out, for template_icon
+
+    @property
+    def running(self) -> bool:
+        return self.job is not None and self.job.is_running()
+
+    @property
+    def cutout(self) -> str | None:
+        return self.job.cutout_path if self.job and not self.running and not self.error else None
+
+
+_check: PictureCheck | None = None
+_previews = None  # bpy.utils.previews collection holding the cut-out shown in the panel
+
+
+def picture_check_for(context) -> PictureCheck | None:
+    """The check of the picture now chosen in the panel (None if it hasn't been checked)."""
+    s = context.scene.i23d
+    if _check is None or not s.image_path or _check.image != bpy.path.abspath(s.image_path):
+        return None
+    return _check
+
+
+def _image_pixels(path: str) -> np.ndarray:
+    """A picture's pixels (rows x columns x channels, 0-1), read with Blender."""
+    img = bpy.data.images.load(path, check_existing=False)
+    try:
+        w, h = img.size
+        px = np.empty(w * h * img.channels, np.float32)
+        img.pixels.foreach_get(px)
+        return px.reshape(h, w, img.channels)
+    finally:
+        bpy.data.images.remove(img)
+
+
+def start_picture_check(context) -> str:
+    """Check the panel's picture: its size now, its cut-out in the background. Returns a problem
+    that stops the check from starting (empty when it started)."""
+    global _check
+    s, prefs = context.scene.i23d, preferences.get(context)
+    image = bpy.path.abspath(s.image_path)
+    problem = tr.check_image(image) if s.image_path else "Choose a picture first."
+    if not problem and preferences.setup_missing(prefs) and not tr.server_up(prefs.comfy_url):
+        problem = "The picture check needs ComfyUI + TRELLIS.2: install them first (see above)."
+    if not problem and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
+        problem = f"ComfyUI is not running at {prefs.comfy_url}."
+    if problem:
+        _check = PictureCheck(image=image, error=problem)
+        return problem
+    try:
+        img = bpy.data.images.load(image, check_existing=False)
+        notes = picture_check.picture_notes(*img.size)
+        bpy.data.images.remove(img)
+    except RuntimeError as exc:
+        _check = PictureCheck(image=image, error=f"Blender can't read this picture ({exc}).")
+        return _check.error
+    out_dir = pipeline.output_dir(context) / "previews"
+    name = tr.sanitize_name(Path(image).stem)
+    job = tr.CutoutJob(url=prefs.comfy_url, image=image, out_base=out_dir / name,
+                       log_path=out_dir / f"{name}_check_log.txt",
+                       server=_server_for(prefs, pipeline.output_dir(context) / "comfyui_log.txt"))
+    job.start()
+    _check = PictureCheck(image=image, job=job, notes=notes)
+    if not bpy.app.timers.is_registered(_watch_picture_check):
+        bpy.app.timers.register(_watch_picture_check, first_interval=0.5)
+    return ""
+
+
+def finish_picture_check(check: PictureCheck) -> None:
+    """The cut-out is back: read what its mask says and load it for the panel."""
+    job = check.job
+    if job.error or not job.cutout_path:
+        check.error = job.error or "ComfyUI made no cut-out."
+        return
+    check.notes = check.notes + picture_check.mask_notes(_image_pixels(job.mask_path)[..., :3])
+    if _previews is not None:
+        _previews.clear()
+        check.icon_id = _previews.load(job.cutout_path, job.cutout_path, "IMAGE").icon_id
+
+
+def _watch_picture_check():
+    _redraw_everywhere()
+    check = _check
+    if check is None or check.job is None:
+        return None
+    if check.running:
+        return 0.5
+    try:
+        finish_picture_check(check)
+    except Exception as exc:  # shown in the panel
+        check.error = str(exc)
+    if not preferences.get(bpy.context).keep_comfy and (_job is None or not _job.is_running()):
+        _stop_server()
     _redraw_everywhere()
     return None
 
@@ -332,6 +439,53 @@ class I23D_OT_dismiss_error(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class I23D_OT_check_picture(bpy.types.Operator):
+    bl_idname = "i23d.check_picture"
+    bl_label = "Check Picture"
+    bl_description = ("Remove the picture's background the way TRELLIS.2 will, show the result and "
+                      "say if something may go wrong (seconds once ComfyUI is running)")
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.scene.i23d.image_path) and not (_check and _check.running)
+
+    def execute(self, context):
+        problem = start_picture_check(context)
+        if problem:
+            self.report({"WARNING"}, problem)
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class I23D_OT_view_cutout(bpy.types.Operator):
+    bl_idname = "i23d.view_cutout"
+    bl_label = "View Larger"
+    bl_description = "Open the cut-out in its own window, as TRELLIS.2 will see it (scroll to zoom)"
+
+    @classmethod
+    def poll(cls, context):
+        check = picture_check_for(context)
+        return check is not None and check.cutout is not None and Path(check.cutout).is_file()
+
+    def execute(self, context):
+        check = picture_check_for(context)
+        img = bpy.data.images.load(check.cutout, check_existing=True)
+        img.reload()
+        before = {w.as_pointer() for w in context.window_manager.windows}
+        bpy.ops.screen.userpref_show("INVOKE_DEFAULT")  # a small new window, turned into an image viewer
+        new = [w for w in context.window_manager.windows if w.as_pointer() not in before]
+        if not new:
+            self.report({"ERROR"}, "Blender didn't open a new window.")
+            return {"CANCELLED"}
+        area = new[0].screen.areas[0]
+        area.ui_type = "IMAGE_EDITOR"
+        area.spaces.active.image = img
+        region = next((r for r in area.regions if r.type == "WINDOW"), None)
+        with context.temp_override(window=new[0], area=area, region=region):
+            bpy.ops.image.view_all(fit_view=True)
+        return {"FINISHED"}
+
+
 class I23D_OT_check_setup(bpy.types.Operator):
     bl_idname = "i23d.check_setup"
     bl_label = "Check Setup"
@@ -409,7 +563,8 @@ class I23D_OT_install_comfy(bpy.types.Operator):
 
 CLASSES = (I23D_OT_generate, I23D_OT_cancel, I23D_OT_stop_comfy, I23D_OT_clean,
            I23D_OT_apply_material, I23D_OT_export, I23D_OT_open_folder, I23D_OT_open_log,
-           I23D_OT_dismiss_error, I23D_OT_check_setup, I23D_OT_install_comfy)
+           I23D_OT_dismiss_error, I23D_OT_check_picture, I23D_OT_view_cutout, I23D_OT_check_setup,
+           I23D_OT_install_comfy)
 
 
 @bpy.app.handlers.persistent
@@ -423,6 +578,8 @@ def _reset_after_load(_dummy):
 
 
 def register():
+    global _previews
+    _previews = bpy.utils.previews.new()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.app.handlers.load_post.append(_reset_after_load)
@@ -430,8 +587,16 @@ def register():
 
 
 def unregister():
-    if bpy.app.timers.is_registered(_watch_installer):
-        bpy.app.timers.unregister(_watch_installer)
+    global _previews, _check
+    for timer in (_watch_installer, _watch_picture_check):
+        if bpy.app.timers.is_registered(timer):
+            bpy.app.timers.unregister(timer)
+    if _check and _check.running:
+        _check.job.cancel()
+    _check = None
+    if _previews is not None:
+        bpy.utils.previews.remove(_previews)
+        _previews = None
     if _reset_after_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_reset_after_load)
     if _job is not None:

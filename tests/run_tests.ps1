@@ -44,7 +44,7 @@ if ($LASTEXITCODE -ne 0) { throw "test_installer.py failed" }
 
 Write-Host "== 2. Add-on inside Blender ($Blender)"
 foreach ($t in "test_ui_bpy", "test_quality_bpy", "test_addon_bpy", "test_colours_bpy", "test_texture_colours_bpy",
-             "test_surface_maps_bpy") {
+             "test_surface_maps_bpy", "test_picture_bpy") {
     Write-Host "-- $t"
     Invoke-Blender "$t.py"
 }

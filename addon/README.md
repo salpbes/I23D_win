@@ -23,7 +23,9 @@ yourself: `powershell -ExecutionPolicy Bypass -File install_comfyui.ps1` (add `-
 check your PC, or `-InstallDir <folder>` to install somewhere else).
 
 ## Use (3D View › press **N** › **Image→3D** tab)
-1. **Picture → 3D model** – pick a picture, press **Generate**. The first time, the add-on starts
+1. **Picture → 3D model** – pick a picture. The panel shows it with its background removed, as
+   TRELLIS.2 will see it, and says if something may go wrong (several pieces, cut off at the
+   edge, too small); **View Larger** opens it in its own window. Press **Generate**. The first time, the add-on starts
    ComfyUI in the background (about 30 s). A model takes under 3 minutes on an RTX 5060 Ti 16 GB.
    Blender stays usable; the bar shows each step. When it's done, the view switches to colour
    (Material Preview) and turns to the new model; turn that off with *Show the new model in

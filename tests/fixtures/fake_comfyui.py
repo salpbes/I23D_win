@@ -4,6 +4,8 @@
 
 Seed 666 makes the job fail at the first KSampler; seed 777 makes every step slow (for Cancel).
 A prompt without a LoadImage picture is rejected like ComfyUI does (HTTP 400).
+A prompt without Save3DAdvanced is the add-on's picture check: it answers with two PNG previews
+(a white square on black, standing in for the cut-out and its mask).
 """
 
 import base64
@@ -14,6 +16,7 @@ import sys
 import threading
 import time
 import uuid
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -41,7 +44,33 @@ def ws_send(client, kind, data):
         sockets.pop(client, None)
 
 
+def square_png(size=64, lo=16, hi=48):
+    """A grey PNG: black with a white square, like a mask of one object."""
+    rows = b"".join(b"\0" + bytes(255 if lo <= x < hi and lo <= y < hi else 0 for x in range(size))
+                    for y in range(size))
+    chunk = lambda kind, data: (struct.pack(">I", len(data)) + kind + data +
+                                struct.pack(">I", zlib.crc32(kind + data)))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 0, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def run_previews(prompt_id, prompt, client):
+    ws_send(client, "execution_start", {"prompt_id": prompt_id})
+    outputs = {}
+    for nid, node in prompt.items():
+        ws_send(client, "executing", {"node": nid, "prompt_id": prompt_id})
+        if node["class_type"] in ("PreviewImage", "MaskPreview"):
+            outputs[nid] = {"images": [{"filename": f"preview_{nid}.png", "subfolder": "", "type": "temp"}]}
+            ws_send(client, "executed", {"node": nid, "prompt_id": prompt_id, "output": outputs[nid]})
+    history[prompt_id] = {"status": {"status_str": "success", "completed": True, "messages": []},
+                          "outputs": outputs}
+    ws_send(client, "executing", {"node": None, "prompt_id": prompt_id})
+    ws_send(client, "execution_success", {"prompt_id": prompt_id})
+
+
 def run(prompt_id, prompt, client):
+    if not any(n["class_type"] == "Save3DAdvanced" for n in prompt.values()):
+        return run_previews(prompt_id, prompt, client)
     seed = next((n["inputs"]["seed"] for n in prompt.values() if n["class_type"] == "KSampler"), 0)
     delay = 0.4 if seed == 777 else 0.01
     ws_send(client, "execution_start", {"prompt_id": prompt_id})
@@ -109,7 +138,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/queue":
             return self._json({"queue_running": [[0, pid] for pid in running], "queue_pending": []})
         if url.path == "/view":
-            data = open(GLB, "rb").read()
+            png = parse_qs(url.query).get("filename", [""])[0].endswith(".png")
+            data = square_png() if png else open(GLB, "rb").read()
             self.send_response(200)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
