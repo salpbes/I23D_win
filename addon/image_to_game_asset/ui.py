@@ -1,6 +1,7 @@
 """Sidebar panel: 3D View > press N > Image→3D tab."""
 
 import textwrap
+from pathlib import Path
 
 import bpy
 
@@ -39,6 +40,19 @@ def _draw_setup(layout, context):
 def _wrapped(layout, text, icon, width=34):
     for i, line in enumerate(textwrap.wrap(text, width=width)):
         layout.label(text=line, icon=icon if i == 0 else "BLANK1")
+
+
+def _path_lines(path, width=32):
+    """A folder path cut at its \\ so each line fits the sidebar."""
+    lines, line = [], ""
+    for part in str(path).split("\\"):
+        piece = part if not line else "\\" + part
+        if line and len(line) + len(piece) > width:
+            lines.append(line + "\\")
+            line = part
+        else:
+            line += piece
+    return lines + [line]
 
 
 def _draw_picture_check(layout, context):
@@ -162,7 +176,11 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         box.label(text="3. Export", icon="EXPORT")
         box.prop(s, "export_dir", text="")
         if not s.export_dir:
-            box.label(text="Default: output folder / game-ready")
+            col = box.column(align=True)
+            col.label(text="Empty, so the .glb files go to:")
+            folder = Path(bpy.path.abspath(preferences.get(context).output_dir)).expanduser()
+            for line in _path_lines(folder / "game-ready"):
+                col.label(text=line)
         row = box.row(align=True)
         row.scale_y = 1.3
         row.operator("i23d.export", icon="FILE_3D")
