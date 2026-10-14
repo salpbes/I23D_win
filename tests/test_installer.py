@@ -90,4 +90,9 @@ inst._check_only = True
 assert inst.working(), "a check of this PC counts as working while its window is open"
 inst._process.code = 0
 assert not inst.working() and not inst.is_running()
+# ---- the command line: -Check only checks, -FrontBack also fetches the front + back model
+cmd = inst.command(Path("C:/x"))
+assert cmd[-2:] == [str(Path("C:/x")), "-Pause"] and "-Check" not in cmd and "-FrontBack" not in cmd, cmd
+assert inst.command(Path("C:/x"), check_only=True)[-1] == "-Check"
+assert inst.command(Path("C:/x"), front_back=True)[-1] == "-FrontBack"
 print("INSTALLER TESTS PASSED")

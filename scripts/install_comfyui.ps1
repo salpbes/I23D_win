@@ -4,11 +4,13 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1 -Check   # checks this PC only
 #   powershell -ExecutionPolicy Bypass -File scripts\install_comfyui.ps1          # check + install
 #
-# Options: -InstallDir <folder> (default %USERPROFILE%\I23D), -ComfyVersion, -Check, -Pause
+# Options: -InstallDir <folder> (default %USERPROFILE%\I23D), -ComfyVersion, -Check, -Pause,
+#          -FrontBack (also the model for front + back pictures, 5.6 GB)
 param(
     [string]$InstallDir,
     [string]$ComfyVersion,
     [switch]$Check,
+    [switch]$FrontBack,
     [switch]$Pause
 )
 & (Join-Path (Split-Path -Parent $PSScriptRoot) "addon\image_to_game_asset\install\install_comfyui.ps1") @PSBoundParameters

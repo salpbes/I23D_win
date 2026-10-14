@@ -16,12 +16,16 @@ def budget_tris(settings) -> int:
     return settings.custom_tris if settings.budget == "CUSTOM" else BUDGETS[settings.budget]
 
 
+def _recheck(self, context):
+    if self.image_path and self.check_picture and not bpy.app.background:
+        from . import operators
+        operators.start_picture_check(context)
+
+
 def _on_image_change(self, context):
     if self.image_path:
         self.asset_name = sanitize_name(Path(bpy.path.abspath(self.image_path)).stem)
-        if self.check_picture and not bpy.app.background:
-            from . import operators
-            operators.start_picture_check(context)
+    _recheck(self, context)
 
 
 def _get_show_originals(self):
@@ -43,9 +47,21 @@ def _on_preset_change(self, context):
 
 class I23D_Settings(bpy.types.PropertyGroup):
     # 1. Picture
+    views: EnumProperty(
+        name="Pictures",
+        items=[("ONE", "One picture", "TRELLIS.2 makes the model from one picture and guesses the back"),
+               ("FRONT_BACK", "Front + back",
+                "Pixal3D makes the model from a front and a back picture, so the back isn't guessed "
+                "(needs one more download, about 6 GB)")],
+        default="ONE", update=_recheck)
     image_path: StringProperty(
         name="Picture", subtype="FILE_PATH", update=_on_image_change,
-        description="One object on a plain or transparent background (.png, .jpg, .webp)")
+        description="One object on a plain or transparent background (.png, .jpg, .webp). For "
+                    "Front + back: the front, or one picture with the front and back side by side")
+    back_path: StringProperty(
+        name="Back", subtype="FILE_PATH", update=_recheck,
+        description="The back of the same object, straight on and the same size as the front. Leave "
+                    "empty when the picture above shows the front and back side by side")
     asset_name: StringProperty(
         name="Name", description="Used for the object and file names (filled in from the picture)")
     check_picture: BoolProperty(

@@ -36,6 +36,18 @@ MODEL_INPUTS = {
 # and normal-map bakes (72 of 182 s on an RTX 5060 Ti) are left out. Both inputs are optional.
 SKIP_INPUTS = {("ApplyTextureToMesh", "occlusion"), ("ApplyTextureToMesh", "normal_map")}
 
+# Front + back pictures: the same stages with Pixal3D's multi-view model (ComfyUI's
+# 3d_pixal3d_multi_views template); the add-on swaps these in (trellis_runner.build_prompt).
+FRONT_BACK = {
+    "about": "Front + back pictures: Pixal3D multi-view (Tencent ARC, MIT) on the same TRELLIS.2 stages. "
+             "The add-on swaps the UNETLoader file and Trellis2Conditioning for Pixal3DMultiViewConditioning.",
+    "unet": "pixal3d_multiview_int8_convrot.safetensors",
+    "fov": 20.0,
+    "models": [{"folder": "diffusion_models", "file": "pixal3d_multiview_int8_convrot.safetensors",
+                "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/diffusion_models/"
+                       "pixal3d_multiview_int8_convrot.safetensors"}],
+}
+
 STEPS = {
     "load": "Loading the AI models",
     "background": "Removing the background",
@@ -166,6 +178,7 @@ def main():
                  "3d_pixal3d_trellis2_image_to_model template. Made by scripts/make_addon_workflow.py.",
         "comfyui_version": version,
         "models": required_models(api, template),
+        "front_back": FRONT_BACK,
         "prompt": api,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

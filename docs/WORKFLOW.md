@@ -7,7 +7,7 @@ Unity, …).
 ## Setting up (once)
 First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with screenshots.
 
-1. Download `image_to_game_asset-2.3.0.zip` from the
+1. Download `image_to_game_asset-2.4.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** › pick
    the zip.
@@ -21,6 +21,9 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
      installer writes `install_progress.json` for that). Blender stays usable.
    - **Safe to press again:** finished files are skipped and stopped downloads continue. Use it
      after an interrupted download too. If the window is closed early, the panel says so.
+   - **Front + back pictures** need one more file (Pixal3D's model, about 6 GB). Choose
+     **Front + back** in the panel and press **Download for Front + Back**, or choose it before
+     the first install and it comes along.
 4. At the end Blender runs **Check Setup** by itself and says **Setup finished**. If something is
    missing, it says what, with the Install button next to it. Already run your own ComfyUI? Press
    *Already have it? Check Setup* in the setup box instead.
@@ -41,6 +44,13 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
   ComfyUI's background-removal step, so it takes seconds once ComfyUI is running. The files go
   to `<output folder>\previews`. Turn it off with *Advanced › Check the picture when chosen*;
   the **Check Picture** button still works.
+- **Front + back pictures:** choose **Front + back** at the top of the section. Then pick one
+  picture with the front and the back side by side (the add-on finds the gap between them and
+  splits it), or the front and the back as two pictures. Instead of TRELLIS.2, **Pixal3D** makes
+  the model: it is built on TRELLIS.2 and projects both pictures into the 3D model, so the back
+  follows your picture instead of a guess. Same steps, about the same time, up to 14 GB graphics
+  memory. Best with an exact front and back view, a level camera and the object the same size in
+  both; the check warns when their outlines don't match.
 - **How:** pick the picture, press **Generate**. *Random seed* is on by default, so every run gives
   a different guess for parts the picture can't show (e.g. the back). If a result looks wrong,
   just run it again.

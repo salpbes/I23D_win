@@ -77,3 +77,58 @@ def mask_notes(mask: np.ndarray) -> list[Note]:
         notes.append(Note(False, f"The cut-out has {pieces} separate pieces. TRELLIS.2 works best "
                                  "with one object: it makes one model of all of them."))
     return notes or [Note(True, "Looks good: one object, clearly cut out.")]
+
+
+# ---------------------------------------------------------------- front + back pictures
+def _object(pixels: np.ndarray) -> np.ndarray:
+    """Which pixels belong to something (not the plain background), from transparency if the
+    picture has it, else by how much they differ from the colour around the edges."""
+    px = np.asarray(pixels, dtype=float)
+    if px.max() > 1:
+        px = px / 255
+    if px.shape[2] == 4 and px[..., 3].min() < 0.99:
+        return px[..., 3] > 0.5
+    rgb = px[..., :3]
+    edge = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+    return np.abs(rgb - np.median(edge, axis=0)).max(axis=2) > 0.12
+
+
+def find_split(pixels: np.ndarray) -> int | None:
+    """In a picture with the front and the back side by side: the column where the back starts
+    (the middle of the widest empty strip near the centre). None if there is no such strip."""
+    used = _object(pixels).mean(axis=0) > 0.002  # columns with some of the object in them
+    width = len(used)
+    lo, hi = width // 4, width * 3 // 4
+    best_gap, split, start = 0, None, None
+    for x in range(lo, hi + 1):
+        if x < hi and not used[x]:
+            start = x if start is None else start
+        elif start is not None:
+            if x - start > best_gap:
+                best_gap, split = x - start, (start + x) // 2
+            start = None
+    if split is None or best_gap < max(4, width // 100) or not used[:split].any() or not used[split:].any():
+        return None
+    return split
+
+
+def _shape(mask: np.ndarray) -> float:
+    """Height / width of the object in a mask (0 if empty)."""
+    m = np.asarray(mask, dtype=float)
+    if m.ndim == 3:
+        m = m[..., :3].mean(axis=2)
+    obj = m > (127 if m.max() > 1 else 0.5)
+    rows, cols = np.nonzero(obj.any(axis=1))[0], np.nonzero(obj.any(axis=0))[0]
+    return 0.0 if not len(rows) else (rows[-1] - rows[0] + 1) / (cols[-1] - cols[0] + 1)
+
+
+def pair_notes(front_mask: np.ndarray, back_mask: np.ndarray) -> list[Note]:
+    """Do the front and back show the same object the same way? Each mask on its own first."""
+    notes = []
+    for side, mask in (("Front", front_mask), ("Back", back_mask)):
+        notes += [Note(n.good, f"{side}: {n.text}") for n in mask_notes(mask) if not n.good]
+    front, back = _shape(front_mask), _shape(back_mask)
+    if front and back and abs(front - back) / max(front, back) > 0.12:
+        notes.append(Note(False, "The front and back have different outlines (one taller or wider than "
+                                 "the other). Both should show the whole object, straight on, the same size."))
+    return notes or [Note(True, "Looks good: front and back clearly cut out, and they match.")]

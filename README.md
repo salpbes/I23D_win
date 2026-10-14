@@ -2,7 +2,9 @@
 
 Turn **one picture** into a **game-ready 3D model** (`.glb`) from a single Blender panel, running
 everything **locally** on a Windows PC with an NVIDIA graphics card and Microsoft's open-source
-**TRELLIS.2** AI. Windows port of [I23D_mac](https://github.com/salpbes/I23D_mac).
+**TRELLIS.2** AI. Have a **front and a back picture**? Then the add-on uses **Pixal3D** instead, so
+the back of the model follows your picture rather than a guess. Windows port of
+[I23D_mac](https://github.com/salpbes/I23D_mac).
 
 ![TRELLIS.2 original next to the game-ready model and its light mesh](docs/images/axe_before_after.png)
 
@@ -17,7 +19,7 @@ in about 2½ minutes.</sub>
 | **Time per model** | under 3 minutes at Standard detail (1024), including starting ComfyUI; peak graphics memory 11.5 GB |
 | **Needs** | Windows 10/11, NVIDIA card with 16 GB (12 GB may work), ~25 GB free disk, Blender 4.2 or newer; no account of any kind |
 
-**Get started:** download `image_to_game_asset-2.3.0.zip` from the
+**Get started:** download `image_to_game_asset-2.4.0.zip` from the
 [latest release](https://github.com/salpbes/I23D_win/releases/latest), then follow
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md): every click, with screenshots, from the download
 to your first `.glb`. No Blender experience needed. The short version is in [Quick start](#quick-start-windows).
@@ -71,8 +73,29 @@ the piece down to a sensible weight, seals the gaps and packs it in a box every 
 |---|---|---|---|
 | **TRELLIS.2**<br/><sub>Microsoft, open source (MIT)</sub> | Makes the 3D model from one picture: shape, colours, and which parts are metal or rough | One of the best open image-to-3D models; free, runs offline, no account. It paints real game textures (colour, metal, roughness), not just a grey shape | Paid online 3D generators: your pictures leave the PC and every model costs money |
 | **ComfyUI**<br/><sub>Comfy Org, open source (GPL-3.0)</sub> | Runs TRELLIS.2 on the graphics card and reports progress | Has TRELLIS.2 built in. Its portable version is one folder with everything included and it works on new RTX 50 cards. Its compact (int8) model fits in 16 GB. It answers on a local web address, so Blender can drive it | TRELLIS.2's own installer: it needs older software that RTX 50 cards can't use, plus C++/CUDA compilers. Running it through Linux (WSL2) worked only on bigger cards and crashed |
+| **Pixal3D**<br/><sub>Tencent ARC Lab, open source (MIT)</sub> | Optional: makes the model from a front **and** a back picture | Built on TRELLIS.2 and already in ComfyUI. It projects every pixel of both pictures into the 3D model, so the back isn't guessed. One extra file (5.6 GB) | Asking TRELLIS.2 to guess the back: it often copies the front |
 | **Blender**<br/><sub>Blender Foundation, open source (GPL)</sub> | Your workspace: the button panel, then cleaning, baking and export | Free, and has every tool needed: remeshing, simplifying, UV unwrapping, ray-traced baking and glTF export. Many artists already use it | A separate app: you would have to import the result into Blender anyway |
 | **glTF / .glb**<br/><sub>Khronos open standard</sub> | The file you take away | The "JPEG of 3D": one file holding mesh and textures, opened by three.js, Godot, Unity, Unreal and Blender | `.fbx` / `.obj`: closed format, or textures in separate files |
+
+## Front + back pictures (new in 2.4.0)
+
+TRELLIS.2 sees only the front, so it has to guess the back, and it often guesses wrong. Give the
+add-on a back picture too and it switches to **Pixal3D**, a model built on TRELLIS.2 that uses
+both pictures. The easiest way to get the pair is to ask an image AI such as Gemini for one picture
+with both views side by side; the add-on splits it by itself.
+
+![A Gemini picture showing a WW2 soldier from the front and from the back](docs/images/front_back_gemini_picture.jpg)
+
+![The real back next to TRELLIS.2's guess and Pixal3D's result](docs/images/front_back_soldier.jpg)
+
+<sub>Left: the back in the Gemini picture. Middle: TRELLIS.2 from the front picture only: no
+backpack, no shovel. Right: Pixal3D from front + back: backpack, shovel and rifle where the
+picture shows them. Same time per model (about 2 minutes), up to 14 GB graphics memory.</sub>
+
+How to use it: choose **Front + back** at the top of the panel, pick the picture (or the front and
+the back as two pictures), and press Generate. The first time, the panel offers the extra download
+(about 6 GB). Tips for the pictures, and a prompt that works, are in
+[GETTING_STARTED.md](docs/GETTING_STARTED.md#front--back-pictures-optional).
 
 ## How the pieces talk to each other
 
@@ -222,7 +245,7 @@ pie showData
 New to Blender? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) walks through every click,
 with screenshots, from the download to your first `.glb`.
 
-1. **Download** `image_to_game_asset-2.3.0.zip` from the
+1. **Download** `image_to_game_asset-2.4.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. **Install it:** Blender › Edit › Preferences › Get Extensions › ⌄ (top right) ›
    **Install from Disk…** › pick the zip.
@@ -232,7 +255,9 @@ with screenshots, from the download to your first `.glb`.
    while the panel shows a progress bar and Blender stays usable. At the end Blender checks the
    setup by itself and says **Setup finished**.
 4. Pick a picture: the panel shows it with its background removed and says if it looks good.
-   Press **Generate 3D Model**. The model appears in colour, centred in the view.
+   (Have a front and a back picture? Choose **Front + back** first; see
+   [above](#front--back-pictures-new-in-240).) Press **Generate 3D Model**. The model appears in
+   colour, centred in the view.
    Then **Export .glb**: the file goes to `%USERPROFILE%\I23D\output\game-ready`.
 
 That zip is all you need: the installer ships inside it.
@@ -263,7 +288,8 @@ Every step and setting explained: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 No. The picture, the AI work and the model all stay on your PC. The add-on talks to ComfyUI at
 `http://127.0.0.1:8188`, which other computers can't reach, and starts it with `--offline`
 (no paid online "partner" nodes, no web requests from its page). Internet is used only by the
-installer (the **Install ComfyUI + TRELLIS.2** button), to download ComfyUI and the model files once.
+installer (the **Install ComfyUI + TRELLIS.2** and **Download for Front + Back** buttons), to
+download ComfyUI and the model files once.
 The add-on only reads the installer's progress from a file on your PC.
 
 ## What's in this repo
@@ -271,7 +297,7 @@ The add-on only reads the installer's progress from a file on your PC.
 ```
 addon/image_to_game_asset/   the Blender add-on (one job per file, see __init__.py)
   trellis_runner.py            start ComfyUI, send the TRELLIS.2 job, read progress (no Blender code)
-  workflows/                   the TRELLIS.2 ComfyUI workflow + the model files it needs
+  workflows/                   the TRELLIS.2 ComfyUI workflow + the model files it needs (and Pixal3D's, for front + back)
   cleanup.py                   messy AI mesh → light, closed game mesh
   baking.py                    bake TRELLIS.2's colours, metal/roughness + normal maps onto the game mesh (+ photo colour match)
   materials.py / exporter.py   material presets / .glb export
@@ -317,6 +343,8 @@ With the real ComfyUI and TRELLIS.2 (about 4 minutes, uses the graphics card):
   https://github.com/Comfy-Org/ComfyUI (downloaded by the installer, not part of this repo)
 - **BiRefNet** by ZhengPeng7 (MIT): background removal
 - **DINOv3** by Meta: picture understanding (its own licence; check before commercial use)
+- **Pixal3D** by Tencent ARC Lab and Tsinghua University (MIT; its third-party parts keep their own
+  terms, see its NOTICE): front + back pictures. https://huggingface.co/TencentARC/Pixal3D
 - Built with help from Claude (Anthropic).
 
 Licences in this repo:
@@ -338,7 +366,7 @@ already say so: the MIT licence (`LICENSE`) and the GPL-3.0-or-later licence of 
 - **Use only pictures you have the right to use.** Respect other people's copyright, trademarks,
   designs and likeness. A generated model can look very much like its picture, so the rights in
   the picture can also apply to the model.
-- **Follow the law and the third-party licences.** TRELLIS.2, ComfyUI, BiRefNet and DINOv3 each have
+- **Follow the law and the third-party licences.** TRELLIS.2, Pixal3D, ComfyUI, BiRefNet and DINOv3 each have
   their own licence and terms, and some limit how their output may be used. Check them before you
   sell or publish what you make.
 - **Check what the AI makes.** Its output can be wrong or unexpected. Look over every model before

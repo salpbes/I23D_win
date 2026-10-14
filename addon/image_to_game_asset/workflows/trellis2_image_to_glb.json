@@ -28,6 +28,18 @@
    "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_texture_vae_bf16.safetensors"
   }
  ],
+ "front_back": {
+  "about": "Front + back pictures: Pixal3D multi-view (Tencent ARC, MIT) on the same TRELLIS.2 stages. The add-on swaps the UNETLoader file and Trellis2Conditioning for Pixal3DMultiViewConditioning.",
+  "unet": "pixal3d_multiview_int8_convrot.safetensors",
+  "fov": 20.0,
+  "models": [
+   {
+    "folder": "diffusion_models",
+    "file": "pixal3d_multiview_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/diffusion_models/pixal3d_multiview_int8_convrot.safetensors"
+   }
+  ]
+ },
  "prompt": {
   "91": {
    "class_type": "Trellis2ShapeStage",

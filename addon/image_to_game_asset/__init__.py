@@ -1,9 +1,11 @@
 """Image to Game Asset — picture -> TRELLIS.2 -> clean game mesh -> .glb.
 
 Module map (each file has one job):
-    trellis_runner.py  run TRELLIS.2 through a local ComfyUI, read its progress (no Blender code)
+    trellis_runner.py  run TRELLIS.2 (or Pixal3D for front + back pictures) through a local ComfyUI,
+                       read its progress (no Blender code)
     workflows/         the TRELLIS.2 ComfyUI workflow (made by scripts/make_addon_workflow.py)
-    picture_check.py   say in plain words what may go wrong with a picture (from its cut-out)
+    picture_check.py   say in plain words what may go wrong with a picture (from its cut-out),
+                       and split a picture showing the front and back side by side
     cleanup.py         turn a messy AI mesh into a clean, light game mesh
     materials.py       simple material presets
     baking.py          bake TRELLIS.2's own colours onto the light game mesh

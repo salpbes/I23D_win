@@ -58,6 +58,52 @@ assert "png" in tr.check_image(glb)
 assert tr.sanitize_name("my axe (v2).png") == "my_axe_v2_png"
 assert tr.fmt_duration(3725) == "1:02:05" and tr.fmt_duration(65) == "1:05"
 wf = tr.load_workflow()
+
+
+# ---- front + back prompts (Pixal3D multi-view on the same stages)
+def links_ok(prompt):
+    for node in prompt.values():
+        for v in node["inputs"].values():
+            if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str):
+                assert v[0] in prompt, f"{node['class_type']} points at missing node {v[0]}"
+
+
+def kinds(prompt):
+    return [n["class_type"] for n in prompt.values()]
+
+
+one = tr.build_prompt(wf, "f.png", seed=1, detail="1024", prefix="p")
+assert "Trellis2Conditioning" in kinds(one) and "Pixal3DMultiViewConditioning" not in kinds(one)
+sheet = tr.build_prompt(wf, "sheet.png", seed=1, detail="1024", prefix="p", split=(200, 100, 120))
+links_ok(sheet)
+assert "Trellis2Conditioning" not in kinds(sheet) and kinds(sheet).count("RemoveBackground") == 2
+assert kinds(sheet).count("ImageCropToMask") == 2 and kinds(sheet).count("LoadImage") == 1
+assert next(n for n in sheet.values() if n["class_type"] == "UNETLoader")["inputs"]["unet_name"] == \
+    wf["front_back"]["unet"] == "pixal3d_multiview_int8_convrot.safetensors"
+cond = next(n for n in sheet.values() if n["class_type"] == "Pixal3DMultiViewConditioning")["inputs"]
+assert set(cond) == {"clip_vision_model", "fov", "front", "back"} and cond["fov"] == 20
+crops = {k: n["inputs"] for k, n in sheet.items() if n["class_type"] == "ImageCrop"}
+assert sorted((c["x"], c["width"], c["height"]) for c in crops.values()) == [(0, 120, 100), (120, 80, 100)]
+load = next(k for k, n in sheet.items() if n["class_type"] == "LoadImage")
+assert {k for k, n in sheet.items() if [load, 0] in n["inputs"].values()} == set(crops), \
+    "front and back steps start from their own half"
+two = tr.build_prompt(wf, "f.png", seed=1, detail="1024", prefix="p", back="b.png")
+links_ok(two)
+assert sorted(n["inputs"]["image"] for n in two.values() if n["class_type"] == "LoadImage") == ["b.png", "f.png"]
+assert "ImageCrop" not in kinds(two)
+cut, nodes = tr.build_cutout_prompt(wf, "f.png", back="b.png")
+links_ok(cut)
+assert len(nodes) == 4 and kinds(cut).count("MaskPreview") == 2 and "UNETLoader" not in kinds(cut)
+
+# the extra model file is only asked for with front + back
+fake_comfy = W / "fb_folder"
+for rel in ["python_embeded/python.exe", "ComfyUI/main.py"] + \
+        [f"ComfyUI/models/{m['folder']}/{m['file']}" for m in wf["models"]]:
+    (fake_comfy / rel).parent.mkdir(parents=True, exist_ok=True)
+    (fake_comfy / rel).touch()
+assert tr.check_folder(fake_comfy, wf) == []
+assert any("pixal3d_multiview" in p for p in tr.check_folder(fake_comfy, wf, front_back=True))
+print("front + back prompts OK")
 assert {m["folder"] for m in wf["models"]} == {"diffusion_models", "vae", "clip_vision", "background_removal"}
 p = tr.build_prompt(wf, "pic.png", seed=7, detail="1536", prefix="i23d/axe")
 kinds = {n["class_type"]: n["inputs"] for n in p.values()}
@@ -132,7 +178,8 @@ try:
     assert "cancelling" in (out / "cancel_log.txt").read_text()
 
     # ---- picture check: only background removal + crop, and their two previews come back
-    cut_prompt, cut_node, mask_node = tr.build_cutout_prompt(tr.load_workflow(), "x.png")
+    cut_prompt, cut_nodes = tr.build_cutout_prompt(tr.load_workflow(), "x.png")
+    assert len(cut_nodes) == 2
     assert {n["class_type"] for n in cut_prompt.values()} == {
         "LoadImage", "LoadBackgroundRemovalModel", "RemoveBackground", "MaskPreview", "ImageCropToMask",
         "PreviewImage"}, "the check must not run any TRELLIS.2 step"
@@ -144,7 +191,22 @@ try:
     assert job.cutout_path.endswith("picture_cutout.png") and job.mask_path.endswith("picture_mask.png")
     assert Path(job.cutout_path).read_bytes()[:4] == b"\x89PNG" and Path(job.mask_path).is_file()
     assert job.fraction == 1.0 and job.label == "Cut-out ready"
+    assert job.back_cutout_path is None and job.back_mask_path is None
     print("picture check OK")
+
+    # ---- front + back pictures: a picture with both side by side (split), or two pictures
+    job = tr.CutoutJob(url=url, image=picture, out_base=out / "previews" / "pair", split=(64, 64, 30))
+    job.start()
+    job.wait(20)
+    assert job.error is None, job.error
+    assert job.back_cutout_path.endswith("pair_back_cutout.png") and Path(job.back_mask_path).is_file()
+    job = tr.TrellisJob(url=url, image=picture, back=picture, out_base=out / "front_back",
+                        log_path=out / "front_back_log.txt")
+    job.start()
+    job.wait(60)
+    assert job.error is None and Path(job.glb_path).is_file(), job.error
+    assert "back picture" in (out / "front_back_log.txt").read_text()
+    print("front + back jobs OK")
 
     # ---- quiet timer
     job = tr.TrellisJob(url=url, image=picture, out_base=out / "q")

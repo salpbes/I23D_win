@@ -5,13 +5,15 @@
 # By hand (from the add-on folder, or scripts\install_comfyui.ps1 in the I23D_win repo):
 #   powershell -ExecutionPolicy Bypass -File install_comfyui.ps1 -Check   # checks this PC only
 #   powershell -ExecutionPolicy Bypass -File install_comfyui.ps1          # check + install
+#   powershell -ExecutionPolicy Bypass -File install_comfyui.ps1 -FrontBack   # also front + back pictures
 #
 # Everything goes into %USERPROFILE%\I23D (change it with -InstallDir):
 #   ComfyUI_windows_portable\   ComfyUI with its own Python, and the TRELLIS.2 model files
 #   output\                     generated models and logs (the add-on's default output folder)
 #   install_log.txt             log of this script
 #
-# Downloads about 2 GB (ComfyUI) + 9 GB (models). Nothing needs a Hugging Face account.
+# Downloads about 2 GB (ComfyUI) + 9 GB (models), and 5.6 GB more with -FrontBack (Pixal3D's model
+# for front + back pictures). Nothing needs a Hugging Face account.
 # Safe to re-run: finished files are skipped, half-finished downloads continue.
 # This file ships inside the add-on (image_to_game_asset\install\), so the add-on zip is all you need.
 # =============================================================================
@@ -19,6 +21,7 @@ param(
     [string]$InstallDir = (Join-Path $env:USERPROFILE "I23D"),
     [string]$ComfyVersion = "v0.39.0",   # the version the add-on's workflow was made and tested with
     [switch]$Check,
+    [switch]$FrontBack,                  # also the model for front + back pictures (Pixal3D, 5.6 GB)
     [switch]$Pause                       # wait for Enter at the end (the add-on's button uses this)
 )
 $ErrorActionPreference = "Stop"
@@ -81,11 +84,17 @@ $tar = Join-Path $env:SystemRoot "System32\tar.exe"
 if ((Test-Path $tar) -and ((& $tar --version) -match "libarchive")) { Ok "Windows can unpack .7z files" }
 else { Stop "Windows' tar.exe (with 7z support) is missing. Update Windows 10/11, or install 7-Zip and unpack by hand." }
 if (Get-Command curl.exe -ErrorAction SilentlyContinue) { Ok "curl found" } else { Stop "curl.exe is missing (it comes with Windows 10/11)." }
-$models = (Get-Content $Workflow -Raw | ConvertFrom-Json).models
+$doc = Get-Content $Workflow -Raw | ConvertFrom-Json
+$models = @($doc.models)
+if ($FrontBack) { $models += @($doc.front_back.models) }
 $missing = @($models | Where-Object { -not (Test-Path (Join-Path $Comfy "ComfyUI\models\$($_.folder)\$($_.file)")) })
 if ($haveComfy) { Ok "ComfyUI already installed" }
 if ($missing.Count -eq 0) { Ok "TRELLIS.2 model files already there ($($models.Count) files)" }
 else { Write-Host "  To download: $($missing.Count) of $($models.Count) TRELLIS.2 model files" }
+$fbMissing = @($doc.front_back.models | Where-Object { -not (Test-Path (Join-Path $Comfy "ComfyUI\models\$($_.folder)\$($_.file)")) })
+if ($fbMissing.Count -eq 0) { Ok "Front + back pictures: model file already there" }
+elseif ($FrontBack) { Write-Host "  To download: the model for front + back pictures (Pixal3D)" }
+else { Write-Host "  Front + back pictures: not installed (optional, run with -FrontBack)" }
 
 if ($Check) { Write-Host ""; Write-Host "Check finished. Nothing was installed."; return }
 
@@ -125,7 +134,7 @@ $torch = & (Join-Path $Comfy "python_embeded\python.exe") -s -c "import torch; p
 if ($torch -match "True") { Ok "PyTorch sees the graphics card: $torch" } else { Stop "PyTorch can't use the graphics card ($torch). Update the NVIDIA driver." }
 
 # -----------------------------------------------------------------------------
-Step "3. TRELLIS.2 model files (about 9 GB, first time only)"
+Step "3. TRELLIS.2 model files (about 9 GB, first time only$(if ($FrontBack) { '; front + back: 5.6 GB more' }))"
 foreach ($m in $models) {
     $dir = Join-Path $Comfy "ComfyUI\models\$($m.folder)"
     $file = Join-Path $dir $m.file

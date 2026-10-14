@@ -69,18 +69,26 @@ def comfy_main(comfy_dir: str | os.PathLike) -> Path:
     return Path(comfy_dir).expanduser() / "ComfyUI" / "main.py"
 
 
+def front_back_models(workflow: dict) -> list[dict]:
+    """The extra model files that front + back pictures need (Pixal3D multi-view)."""
+    return workflow.get("front_back", {}).get("models", [])
+
+
 def check_setup(comfy_dir: str | os.PathLike, url: str = DEFAULT_URL,
-                workflow: dict | None = None) -> list[str]:
-    """Return a list of plain-English problems (empty list = all good)."""
+                workflow: dict | None = None, front_back: bool = False) -> list[str]:
+    """Return a list of plain-English problems (empty list = all good). With front_back, also
+    the extra file that front + back pictures need."""
     workflow = workflow or load_workflow()
     if server_up(url):
-        missing = [m for m in workflow["models"]
+        models = workflow["models"] + (front_back_models(workflow) if front_back else [])
+        missing = [m for m in models
                    if m["file"] not in _get_json(url, f"/models/{m['folder']}", default=[])]
         return [f"ComfyUI is missing the model file {m['folder']}/{m['file']}" for m in missing]
-    return check_folder(comfy_dir, workflow)
+    return check_folder(comfy_dir, workflow, front_back)
 
 
-def check_folder(comfy_dir: str | os.PathLike, workflow: dict | None = None) -> list[str]:
+def check_folder(comfy_dir: str | os.PathLike, workflow: dict | None = None,
+                 front_back: bool = False) -> list[str]:
     """Like check_setup, but only looks at the ComfyUI folder (quick: no network)."""
     workflow = workflow or load_workflow()
     root = Path(comfy_dir).expanduser()
@@ -91,7 +99,7 @@ def check_folder(comfy_dir: str | os.PathLike, workflow: dict | None = None) -> 
         problems.append("This is not a ComfyUI portable folder (python_embeded or ComfyUI\\main.py "
                         "missing) - press Install ComfyUI + TRELLIS.2 first.")
     models = root / "ComfyUI" / "models"
-    for m in workflow["models"]:
+    for m in workflow["models"] + (front_back_models(workflow) if front_back else []):
         if not (models / m["folder"] / m["file"]).is_file():
             problems.append(f"Model file missing: ComfyUI\\models\\{m['folder']}\\{m['file']}")
     return problems
@@ -146,8 +154,13 @@ def upload_image(url: str, image: str | os.PathLike) -> str:
     return f"{info['subfolder']}/{info['name']}" if info.get("subfolder") else info["name"]
 
 
-def build_prompt(workflow: dict, image_name: str, *, seed: int, detail: str, prefix: str) -> dict:
-    """The workflow with this run's picture, seed, detail and output name filled in."""
+def build_prompt(workflow: dict, image_name: str, *, seed: int, detail: str, prefix: str,
+                 back: str | None = None, split: tuple[int, int, int] | None = None) -> dict:
+    """The workflow with this run's picture, seed, detail and output name filled in.
+
+    Front + back pictures (Pixal3D multi-view): back is the ComfyUI name of a separate back
+    picture, or split = (width, height, x) when image_name holds both side by side, the back
+    starting at x."""
     if detail not in DETAILS:
         raise ValueError(f"Detail must be one of {DETAILS}")
     prompt = copy.deepcopy(workflow["prompt"])
@@ -161,7 +174,61 @@ def build_prompt(workflow: dict, image_name: str, *, seed: int, detail: str, pre
             inputs["target_resolution"] = int(detail)
         elif kind == "Save3DAdvanced":
             inputs["filename_prefix"] = prefix
+    if back or split:
+        _use_front_back(prompt, workflow, back, split)
     return prompt
+
+
+def _find(prompt: dict, class_type: str) -> str:
+    return next(k for k, n in prompt.items() if n["class_type"] == class_type)
+
+
+def _add_node(prompt: dict, class_type: str, inputs: dict, like: str) -> str:
+    """Add a node; it reports progress like the node `like` (same step label)."""
+    nid = str(max(int(k) for k in prompt if k.isdigit()) + 1)
+    prompt[nid] = {"class_type": class_type, "inputs": inputs,
+                   "_meta": dict(prompt[like].get("_meta", {}), title=class_type)}
+    return nid
+
+
+def split_boxes(split: tuple[int, int, int]) -> tuple[tuple, tuple]:
+    """(x, y, width, height) of the front (left part) and the back (right part)."""
+    width, height, x = split
+    return (0, 0, x, height), (x, 0, width - x, height)
+
+
+def _add_back(prompt: dict, back: str | None, split: tuple[int, int, int] | None) -> tuple[str, str]:
+    """Give the prompt a back picture next to its front: removed background, cropped the same way.
+    Returns the ids of the back's RemoveBackground (its mask) and ImageCropToMask nodes."""
+    load, rb, crop = _find(prompt, "LoadImage"), _find(prompt, "RemoveBackground"), _find(prompt, "ImageCropToMask")
+    back_src = [load, 0]
+    if back:
+        back_src = [_add_node(prompt, "LoadImage", {"image": back}, load), 0]
+    elif split:
+        front_box, back_box = split_boxes(split)
+        cut = lambda box: _add_node(prompt, "ImageCrop", dict(zip(("x", "y", "width", "height"), box),
+                                                              image=[load, 0]), load)
+        front = cut(front_box)
+        for nid, node in prompt.items():  # the front's steps now start from the left part
+            if nid != front:
+                node["inputs"] = {k: [front, 0] if v == [load, 0] else v for k, v in node["inputs"].items()}
+        back_src = [cut(back_box), 0]
+    mask = _add_node(prompt, "RemoveBackground",
+                     {"bg_removal_model": prompt[rb]["inputs"]["bg_removal_model"], "image": back_src}, rb)
+    cutout = _add_node(prompt, "ImageCropToMask",
+                       {**prompt[crop]["inputs"], "images": back_src, "masks": [mask, 0]}, crop)
+    return mask, cutout
+
+
+def _use_front_back(prompt: dict, workflow: dict, back, split) -> None:
+    """Swap TRELLIS.2's one-picture model for Pixal3D's multi-view one, fed the front and back."""
+    fb = workflow["front_back"]
+    _, back_cutout = _add_back(prompt, back, split)
+    prompt[_find(prompt, "UNETLoader")]["inputs"]["unet_name"] = fb["unet"]
+    node = prompt[_find(prompt, "Trellis2Conditioning")]
+    node["class_type"] = "Pixal3DMultiViewConditioning"
+    node["inputs"] = {"clip_vision_model": node["inputs"]["clip_vision_model"], "fov": fb["fov"],
+                      "front": node["inputs"]["image"], "back": [back_cutout, 0]}
 
 
 def _upstream(prompt: dict, outputs) -> dict:
@@ -176,19 +243,25 @@ def _upstream(prompt: dict, outputs) -> dict:
     return {nid: node for nid, node in prompt.items() if nid in keep}
 
 
-def build_cutout_prompt(workflow: dict, image_name: str) -> tuple[dict, str, str]:
+def build_cutout_prompt(workflow: dict, image_name: str, back: str | None = None,
+                        split: tuple[int, int, int] | None = None) -> tuple[dict, tuple[str, ...]]:
     """Only the workflow's first steps: remove the background and crop to the object, exactly as
-    TRELLIS.2 gets it. Returns the prompt and the ids of the cut-out and mask preview nodes."""
+    TRELLIS.2 gets it. Returns the prompt and the ids of the nodes that show the cut-out and its
+    mask (then the back's cut-out and mask, for front + back pictures; see build_prompt)."""
     prompt = copy.deepcopy(workflow["prompt"])
-    crop = next(k for k, n in prompt.items() if n["class_type"] == "ImageCropToMask")
-    cutout = next(k for k, n in prompt.items()
-                  if n["class_type"] == "PreviewImage" and n["inputs"].get("images") == [crop, 0])
-    mask = next(k for k, n in prompt.items() if n["class_type"] == "MaskPreview")
-    prompt = _upstream(prompt, [cutout, mask])
     for node in prompt.values():
         if node["class_type"] == "LoadImage":
             node["inputs"]["image"] = image_name
-    return prompt, cutout, mask
+    crop = _find(prompt, "ImageCropToMask")
+    cutout = next(k for k, n in prompt.items()
+                  if n["class_type"] == "PreviewImage" and n["inputs"].get("images") == [crop, 0])
+    mask = _find(prompt, "MaskPreview")
+    outputs = [cutout, mask]
+    if back or split:
+        back_mask, back_cutout = _add_back(prompt, back, split)
+        outputs += [_add_node(prompt, "PreviewImage", {"images": [back_cutout, 0]}, cutout),
+                    _add_node(prompt, "MaskPreview", {"mask": [back_mask, 0]}, mask)]
+    return _upstream(prompt, outputs), tuple(outputs)
 
 
 def describe_prompt_error(err: dict) -> str:
@@ -380,9 +453,12 @@ class TrellisJob:
     """
 
     def __init__(self, *, url: str, image, out_base, seed: int = 42, detail: str = "1024",
-                 log_path=None, server: ComfyServer | None = None, workflow: dict | None = None):
+                 log_path=None, server: ComfyServer | None = None, workflow: dict | None = None,
+                 back=None, split: tuple[int, int, int] | None = None):
         self.url = url.rstrip("/")
         self.image = Path(image).expanduser()
+        self.back = Path(back).expanduser() if back else None  # front + back pictures (Pixal3D)
+        self.split = split  # (width, height, x): image shows the front and, from x on, the back
         self.out_base = Path(out_base)
         self.seed, self.detail = int(seed), str(detail)
         self.log_path = Path(log_path) if log_path else None
@@ -456,10 +532,18 @@ class TrellisJob:
                 self._log.close()
                 self._log = None
 
+    def _upload_back(self) -> str | None:
+        if not self.back:
+            return None
+        name = upload_image(self.url, self.back)
+        self._say(f"back picture {self.back} -> {name}")
+        return name
+
     def _make_prompt(self, image_name: str) -> dict:
-        self._say(f"picture {self.image} -> {image_name}, seed {self.seed}, detail {self.detail}")
+        self._say(f"picture {self.image} -> {image_name}, seed {self.seed}, detail {self.detail}"
+                  + (f", front and back side by side (back from x={self.split[2]})" if self.split else ""))
         return build_prompt(self.workflow, image_name, seed=self.seed, detail=self.detail,
-                            prefix=f"i23d/{self.out_base.name}")
+                            prefix=f"i23d/{self.out_base.name}", back=self._upload_back(), split=self.split)
 
     def _ensure_server(self) -> None:
         if server_up(self.url):
@@ -585,21 +669,25 @@ class CutoutJob(TrellisJob):
     """Only the first steps of a run: the picture with its background removed, cropped the way
     TRELLIS.2 will see it, plus its mask. Takes seconds once ComfyUI is up.
 
-    Read .cutout_path and .mask_path (PNG files) when it ends without .error.
+    Read .cutout_path and .mask_path (PNG files) when it ends without .error; with a back picture
+    (back or split, as for TrellisJob) also .back_cutout_path and .back_mask_path.
     """
 
+    SUFFIXES = ("_cutout.png", "_mask.png", "_back_cutout.png", "_back_mask.png")
+
     def __init__(self, *, url: str, image, out_base, log_path=None, server: ComfyServer | None = None,
-                 workflow: dict | None = None):
+                 workflow: dict | None = None, back=None, split: tuple[int, int, int] | None = None):
         super().__init__(url=url, image=image, out_base=out_base, log_path=log_path, server=server,
-                         workflow=workflow)
+                         workflow=workflow, back=back, split=split)
         self.cutout_path: str | None = None
         self.mask_path: str | None = None
-        self._nodes: tuple[str, str] = ("", "")
+        self.back_cutout_path: str | None = None
+        self.back_mask_path: str | None = None
+        self._nodes: tuple[str, ...] = ()
 
     def _make_prompt(self, image_name: str) -> dict:
         self._say(f"cut-out of {self.image} -> {image_name}")
-        prompt, cutout, mask = build_cutout_prompt(self.workflow, image_name)
-        self._nodes = (cutout, mask)
+        prompt, self._nodes = build_cutout_prompt(self.workflow, image_name, self._upload_back(), self.split)
         return prompt
 
     def _download(self, entry: dict | None = None) -> None:
@@ -608,11 +696,11 @@ class CutoutJob(TrellisJob):
             entry = _get_json(self.url, f"/history/{self.prompt_id}", timeout=30)[self.prompt_id]
         outputs = entry.get("outputs", {})
         paths = []
-        for node, suffix in zip(self._nodes, ("_cutout.png", "_mask.png")):
+        for node, suffix in zip(self._nodes, self.SUFFIXES):
             images = outputs.get(node, {}).get("images", [])
             if not images:
                 raise RuntimeError("ComfyUI finished but made no cut-out.")
             paths.append(str(self._fetch(images[0], self.out_base.with_name(self.out_base.name + suffix))))
-        self.cutout_path, self.mask_path = paths
+        self.cutout_path, self.mask_path, self.back_cutout_path, self.back_mask_path = paths + [None] * (4 - len(paths))
         self.fraction, self.label = 1.0, "Cut-out ready"
         self._say(f"saved {self.cutout_path}")

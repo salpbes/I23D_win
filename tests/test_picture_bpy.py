@@ -29,6 +29,24 @@ assert pc.mask_notes(ring)[0].good, "a hole doesn't make two pieces"
 assert pc.mask_notes(np.dstack([mask((100, 500, 200, 600)) * 255] * 3))[0].good, "RGB 0-255 masks work"
 assert "small (300 x 400" in pc.picture_notes(300, 400)[0].text and pc.picture_notes(1024, 768) == []
 
+# ---- front + back: where a side-by-side picture splits, and do the two views match
+sheet = np.ones((100, 300, 3)); sheet[20:90, 30:110] = 0.2; sheet[20:90, 190:270] = 0.3
+assert pc.find_split(sheet) == 150, pc.find_split(sheet)
+assert pc.find_split(sheet * 255) == 150, "0-255 pictures work"
+assert pc.find_split(np.ones((100, 300, 3))) is None, "nothing in the picture"
+joined = sheet.copy(); joined[50:55, 100:200] = 0.2
+assert pc.find_split(joined) is None, "no gap between front and back"
+one = np.ones((100, 300, 3)); one[20:90, 100:200] = 0.2
+assert pc.find_split(one) is None, "one object in the middle is not front + back"
+rgba = np.zeros((100, 300, 4)); rgba[20:90, 30:110, 3] = 1; rgba[20:90, 190:270, 3] = 1
+assert pc.find_split(rgba) == 150, "transparent background"
+pair = pc.pair_notes(mask((100, 500, 200, 400)), mask((100, 500, 210, 410)))
+assert len(pair) == 1 and pair[0].good and "front and back" in pair[0].text, pair
+assert "different outlines" in " ".join(n.text for n in pc.pair_notes(mask((100, 500, 200, 400)),
+                                                                        mask((100, 300, 200, 400))))
+edge = pc.pair_notes(mask((100, 500, 200, 400)), mask((0, 500, 200, 400)))
+assert any(n.text.startswith("Back: The object touches") for n in edge), edge
+
 # ---- a finished check reaches the panel
 ctx = bpy.context
 prefs = ctx.preferences.addons["image_to_game_asset"].preferences
@@ -49,10 +67,11 @@ class Done:  # a finished CutoutJob, with the files test_runner.py downloaded
     error, label = None, "Cut-out ready"
     cutout_path = T + "/out/previews/picture_cutout.png"
     mask_path = T + "/out/previews/picture_mask.png"
+    back_cutout_path = back_mask_path = None
     def is_running(self):
         return False
 check = ops.PictureCheck(image=bpy.path.abspath(s.image_path), job=Done(),
-                         notes=pc.picture_notes(300, 400))
+                         notes=pc.picture_notes(300, 400), key=ops._check_key(ctx))
 ops.finish_picture_check(check)
 ops._check = check
 print("notes:", [n.text for n in check.notes])
@@ -68,6 +87,28 @@ class Busy(Done):  # a check still removing the background: Generate waits for i
 ops._check = ops.PictureCheck(image=check.image, job=Busy())
 assert not bpy.ops.i23d.generate.poll(), "Generate must wait for the picture check"
 ops._check = check
+s.views = "FRONT_BACK"
+assert ops.picture_check_for(ctx) is None, "front + back needs its own check"
+s.views = "ONE"
+assert ops.picture_check_for(ctx) is check
+
+# ---- front + back input: a side-by-side picture is split, a separate back is used as it is
+img = bpy.data.images.new("sheet", 300, 100)
+img.pixels.foreach_set(np.dstack([sheet, np.ones((100, 300))]).astype(np.float32).ravel())
+img.filepath_raw, img.file_format = T + "/sheet.png", "PNG"
+img.save()
+bpy.data.images.remove(img)
+s.image_path = T + "/sheet.png"
+s.views = "FRONT_BACK"
+assert ops.front_back_input(ctx, bpy.path.abspath(s.image_path)) == (None, (300, 100, 150), "")
+s.back_path = T + "/picture.png"
+back, split, problem = ops.front_back_input(ctx, bpy.path.abspath(s.image_path))
+assert back == bpy.path.abspath(s.back_path) and split is None and not problem
+s.back_path = ""
+s.image_path = T + "/picture.png"
+assert "no gap" in ops.front_back_input(ctx, bpy.path.abspath(s.image_path))[2]
+s.views = "ONE"
+assert ops.front_back_input(ctx, bpy.path.abspath(s.image_path)) == (None, None, "")
 s.image_path = T + "/other.png"
 assert ops.picture_check_for(ctx) is None, "a new picture needs a new check"
 assert len(bpy.data.images) == 0, "reading the mask left an image behind"

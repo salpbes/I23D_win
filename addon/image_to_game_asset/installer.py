@@ -17,12 +17,14 @@ SCRIPT = Path(__file__).parent / "install" / "install_comfyui.ps1"
 HOME = Path.home() / "I23D"            # the installer's default folder
 COMFY_FOLDER = "ComfyUI_windows_portable"  # what the installer makes inside it
 DOWNLOAD_GB = 11                       # ComfyUI about 2 GB + TRELLIS.2 model files about 9 GB
+FRONT_BACK_GB = 6                      # Pixal3D multi-view model for front + back pictures (5.6 GB)
 PROGRESS_FILE = "install_progress.json"
 
 last_problems: list[str] = []          # what the last Check Setup found (empty = fine or not checked)
 check_passed = False                   # the last Check Setup found everything
 note = ""                              # how the last install ended (shown until the next action)
 note_ok = False                        # ... and whether that was good news
+front_back = False                     # the last install also fetched the front + back model
 _process: subprocess.Popen | None = None
 _check_only = False                    # the open window is only checking this PC
 _progress_path: Path | None = None     # set while a real install (not a check) is tracked
@@ -50,10 +52,10 @@ def install_dir_for(comfy_dir: str) -> Path:
     return path.parent if path.name.lower() == COMFY_FOLDER.lower() else HOME
 
 
-def command(install_dir: Path, check_only: bool = False) -> list[str]:
+def command(install_dir: Path, check_only: bool = False, front_back: bool = False) -> list[str]:
     cmd = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(SCRIPT),
            "-InstallDir", str(install_dir), "-Pause"]
-    return cmd + ["-Check"] if check_only else cmd
+    return cmd + ["-Check"] * check_only + ["-FrontBack"] * front_back
 
 
 def is_running() -> bool:
@@ -71,17 +73,18 @@ def working() -> bool:
     return p.state not in ("done", "failed")
 
 
-def start(install_dir: Path, check_only: bool = False) -> None:
-    """Open a new PowerShell window running the installer; returns at once."""
-    global _process, _progress_path, _check_only, note
+def start(install_dir: Path, check_only: bool = False, front_back_too: bool = False) -> None:
+    """Open a new PowerShell window running the installer; returns at once. front_back_too also
+    downloads the model for front + back pictures."""
+    global _process, _progress_path, _check_only, note, front_back
     if not SCRIPT.is_file():
         raise FileNotFoundError(f"The installer is missing from the add-on: {SCRIPT}. Re-install the add-on zip.")
     _progress_path, _check_only = None, check_only
     if not check_only:  # a check writes no progress; an install starts from a clean slate
         _progress_path = Path(install_dir) / PROGRESS_FILE
         _progress_path.unlink(missing_ok=True)
-        note = ""
-    _process = subprocess.Popen(command(install_dir, check_only),
+        note, front_back = "", front_back_too
+    _process = subprocess.Popen(command(install_dir, check_only, front_back_too),
                                 creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
 
 

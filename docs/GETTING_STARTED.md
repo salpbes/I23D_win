@@ -22,7 +22,7 @@ Plan for about 15 minutes of clicking, plus a one-time download of about 11 GB.
 ### 1. Download the add-on
 
 From the [latest release](https://github.com/salpbes/I23D_win/releases/latest), download
-`image_to_game_asset-2.3.0.zip`. **Don't unzip it.** That one file is all you need.
+`image_to_game_asset-2.4.0.zip`. **Don't unzip it.** That one file is all you need.
 
 ### 2. Open "Install from Disk"
 
@@ -142,10 +142,55 @@ by itself.
 
 ![Done, Saved: viking_wolf_rune_axe_15k.glb, and the Export .glb button](images/getting_started/11_exported.png)
 
+## Front + back pictures (optional)
+
+From one picture, the AI has to guess what the back looks like. If you have a picture of the back
+too, the add-on can use both, and the back of the model follows your picture.
+
+### 13. Make a front and a back picture
+
+The easiest way is to ask an image AI, such as Gemini, for one picture that shows both. This
+prompt worked well (change the first sentence to your object):
+
+> Create an image of an American soldier in WW2. Show both the front and back. We need a
+> full-body image. Straight front view and exact back view, level camera, no rotation. Remove the
+> background so only the main object is visible; no other elements are needed. Do not add any
+> platforms, etc. Show the front and back side by side, high resolution, on a plain white
+> background.
+
+What matters:
+- **Straight on:** an exact front and an exact back view, camera level with the object, no turn.
+- **The same size** in both views.
+- **Nothing else** in the picture: no titles, colour swatches or turntables.
+- **Space between the two views**, so the add-on can tell where the front ends.
+
+Two separate pictures (one front, one back) work too.
+
+![A Gemini picture with the front and the back side by side](images/front_back_gemini_picture.jpg)
+
+### 14. Choose "Front + back" and pick the picture
+
+At the top of section 1, click **Front + back**. Then pick the picture in the first box. If the
+front and back are separate pictures, pick the front there and the back in the second box.
+
+The first time, the panel says **Front + back pictures need one more download** (about 6 GB).
+Press **Download for Front + Back** and say yes. It downloads in its own window, like the first
+install, and the panel shows the progress.
+
+The check shows both cut-outs and says whether they match. **Front** and **Back** open them
+larger.
+
+![The panel with Front + back chosen, both cut-outs and "Looks good"](images/getting_started/13_front_back.png)
+
+### 15. Press "Generate 3D Model"
+
+Everything else works as before. The model takes about as long as with one picture.
+
 ## Next
 
 - Smaller or bigger models, other colours, every setting: [WORKFLOW.md](WORKFLOW.md)
 - Something went wrong: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- Why front + back gives a better back: [README](../README.md#front--back-pictures-new-in-240)
 - Before you sell or publish what you make: read the [Disclaimer](../README.md#disclaimer)
 
 <sub>Screenshots: Blender 5.2.2 on Windows 11 with an RTX 5060 Ti 16 GB. The picture is ComfyUI's

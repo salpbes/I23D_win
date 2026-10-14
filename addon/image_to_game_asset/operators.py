@@ -77,10 +77,13 @@ def _watch_installer():
         return 1.0 if installer.working() else None
     if result.state == "done":
         prefs = preferences.get(bpy.context)
-        problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
+        problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url,
+                                  front_back=installer.front_back)
         installer.last_problems, installer.check_passed = problems, not problems
+        ready = ("Setup finished: front + back pictures are ready too." if installer.front_back else
+                 "Setup finished: ComfyUI and TRELLIS.2 are ready.")
         installer.note, installer.note_ok = ("", False) if problems else (
-            "Setup finished: ComfyUI and TRELLIS.2 are ready. Pick a picture and press Generate.", True)
+            ready + " Pick a picture and press Generate.", True)
     else:
         installer.note, installer.note_ok = result.message, False
     _redraw_everywhere()
@@ -95,6 +98,8 @@ class PictureCheck:
     notes: list = field(default_factory=list)   # picture_check.Note
     error: str = ""
     icon_id: int = 0                            # the cut-out, for template_icon
+    back_icon_id: int = 0                       # the back's cut-out (front + back pictures)
+    key: tuple = ()                             # what was checked (see _check_key)
 
     @property
     def running(self) -> bool:
@@ -104,15 +109,25 @@ class PictureCheck:
     def cutout(self) -> str | None:
         return self.job.cutout_path if self.job and not self.running and not self.error else None
 
+    @property
+    def back_cutout(self) -> str | None:
+        return self.job.back_cutout_path if self.cutout else None
+
 
 _check: PictureCheck | None = None
-_previews = None  # bpy.utils.previews collection holding the cut-out shown in the panel
+_previews = None  # bpy.utils.previews collection holding the cut-outs shown in the panel
+
+
+def _check_key(context) -> tuple:
+    s = context.scene.i23d
+    back = bpy.path.abspath(s.back_path) if s.views == "FRONT_BACK" and s.back_path else ""
+    return bpy.path.abspath(s.image_path), s.views, back
 
 
 def picture_check_for(context) -> PictureCheck | None:
-    """The check of the picture now chosen in the panel (None if it hasn't been checked)."""
+    """The check of the picture(s) now chosen in the panel (None if they haven't been checked)."""
     s = context.scene.i23d
-    if _check is None or not s.image_path or _check.image != bpy.path.abspath(s.image_path):
+    if _check is None or not s.image_path or _check.key != _check_key(context):
         return None
     return _check
 
@@ -129,34 +144,59 @@ def _image_pixels(path: str) -> np.ndarray:
         bpy.data.images.remove(img)
 
 
+def front_back_input(context, image: str) -> tuple[str | None, tuple | None, str]:
+    """For Front + back: the back picture, or where the back starts in a picture showing both
+    side by side (width, height, x). The third value is a problem to show (empty = fine)."""
+    s = context.scene.i23d
+    if s.views != "FRONT_BACK":
+        return None, None, ""
+    if s.back_path:
+        back = bpy.path.abspath(s.back_path)
+        return back, None, tr.check_image(back) or ""
+    px = _image_pixels(image)
+    x = picture_check.find_split(px)
+    if x is None:
+        return None, None, ("Front + back: there is no gap between a front and a back in this picture. "
+                            "Use a picture with both side by side and some space between them, or "
+                            "choose the back as a picture of its own.")
+    return None, (px.shape[1], px.shape[0], x), ""
+
+
 def start_picture_check(context) -> str:
     """Check the panel's picture: its size now, its cut-out in the background. Returns a problem
     that stops the check from starting (empty when it started)."""
     global _check
     s, prefs = context.scene.i23d, preferences.get(context)
-    image = bpy.path.abspath(s.image_path)
+    image, key = bpy.path.abspath(s.image_path), _check_key(context)
     problem = tr.check_image(image) if s.image_path else "Choose a picture first."
     if not problem and preferences.setup_missing(prefs) and not tr.server_up(prefs.comfy_url):
         problem = "The picture check needs ComfyUI + TRELLIS.2: install them first (see above)."
     if not problem and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
         problem = f"ComfyUI is not running at {prefs.comfy_url}."
     if problem:
-        _check = PictureCheck(image=image, error=problem)
+        _check = PictureCheck(image=image, error=problem, key=key)
         return problem
     try:
         img = bpy.data.images.load(image, check_existing=False)
-        notes = picture_check.picture_notes(*img.size)
+        size = tuple(img.size)
         bpy.data.images.remove(img)
+        back, split, problem = front_back_input(context, image)
     except RuntimeError as exc:
-        _check = PictureCheck(image=image, error=f"Blender can't read this picture ({exc}).")
+        _check = PictureCheck(image=image, error=f"Blender can't read this picture ({exc}).", key=key)
         return _check.error
+    if problem:
+        _check = PictureCheck(image=image, error=problem, key=key)
+        return problem
+    if split:  # each half is a picture of its own
+        size = (min(split[2], split[0] - split[2]), split[1])
+    notes = picture_check.picture_notes(*size)
     out_dir = pipeline.output_dir(context) / "previews"
     name = tr.sanitize_name(Path(image).stem)
     job = tr.CutoutJob(url=prefs.comfy_url, image=image, out_base=out_dir / name,
-                       log_path=out_dir / f"{name}_check_log.txt",
+                       log_path=out_dir / f"{name}_check_log.txt", back=back, split=split,
                        server=_server_for(prefs, pipeline.output_dir(context) / "comfyui_log.txt"))
     job.start()
-    _check = PictureCheck(image=image, job=job, notes=notes)
+    _check = PictureCheck(image=image, job=job, notes=notes, key=key)
     if not bpy.app.timers.is_registered(_watch_picture_check):
         bpy.app.timers.register(_watch_picture_check, first_interval=0.5)
     return ""
@@ -168,10 +208,16 @@ def finish_picture_check(check: PictureCheck) -> None:
     if job.error or not job.cutout_path:
         check.error = job.error or "ComfyUI made no cut-out."
         return
-    check.notes = check.notes + picture_check.mask_notes(_image_pixels(job.mask_path)[..., :3])
+    mask = _image_pixels(job.mask_path)[..., :3]
+    if job.back_mask_path:
+        check.notes = check.notes + picture_check.pair_notes(mask, _image_pixels(job.back_mask_path)[..., :3])
+    else:
+        check.notes = check.notes + picture_check.mask_notes(mask)
     if _previews is not None:
         _previews.clear()
         check.icon_id = _previews.load(job.cutout_path, job.cutout_path, "IMAGE").icon_id
+        if job.back_cutout_path:
+            check.back_icon_id = _previews.load(job.back_cutout_path, job.back_cutout_path, "IMAGE").icon_id
 
 
 def _watch_picture_check():
@@ -204,8 +250,8 @@ def _clean_and_maybe_export(op, context, obj):
 class I23D_OT_generate(bpy.types.Operator):
     bl_idname = "i23d.generate"
     bl_label = "Generate 3D Model"
-    bl_description = ("Make a 3D model from the picture with TRELLIS.2 on this PC "
-                      "(under 3 minutes). Blender stays usable")
+    bl_description = ("Make a 3D model from the picture on this PC (under 3 minutes): with TRELLIS.2, "
+                      "or with Pixal3D for front + back pictures. Blender stays usable")
     bl_options = {"REGISTER"}
 
     @classmethod
@@ -224,14 +270,23 @@ class I23D_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         image = bpy.path.abspath(s.image_path)
-        problems = [tr.check_image(image) if s.image_path else "Choose a picture first."]
-        if not problems[0]:
+        back = split = None
+        problem = tr.check_image(image) if s.image_path else "Choose a picture first."
+        problems = [problem] if problem else []
+        if not problems:
             problems = tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url)
             installer.last_problems, installer.check_passed = problems, not problems
-            if not problems and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
-                problems = [f"ComfyUI is not running at {prefs.comfy_url}. Start it, or turn on "
-                            "'Start ComfyUI when needed' in the add-on preferences."]
-        if problems and problems[0]:
+        if not problems and s.views == "FRONT_BACK":
+            if tr.check_setup(bpy.path.abspath(prefs.comfy_dir), prefs.comfy_url, front_back=True):
+                problems = [f"Front + back pictures need one more download (about {installer.FRONT_BACK_GB} "
+                            "GB): press Download for Front + Back in the panel."]
+            else:
+                back, split, problem = front_back_input(context, image)
+                problems = [problem] if problem else []
+        if not problems and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
+            problems = [f"ComfyUI is not running at {prefs.comfy_url}. Start it, or turn on "
+                        "'Start ComfyUI when needed' in the add-on preferences."]
+        if problems:
             s.status, s.last_error = "Can't start", problems[0]
             self.report({"ERROR"}, problems[0])
             return {"CANCELLED"}
@@ -244,7 +299,7 @@ class I23D_OT_generate(bpy.types.Operator):
             s.seed = random.randint(0, 2_147_483_647)
         s.last_log = str(out_dir / f"{self._name}_log.txt")
         _job = tr.TrellisJob(url=prefs.comfy_url, image=image, out_base=out_dir / self._name,
-                             seed=s.seed, detail=s.quality, log_path=s.last_log,
+                             seed=s.seed, detail=s.quality, log_path=s.last_log, back=back, split=split,
                              server=_server_for(prefs, out_dir / "comfyui_log.txt"))
         _job.start()
 
@@ -467,7 +522,10 @@ class I23D_OT_check_picture(bpy.types.Operator):
 class I23D_OT_view_cutout(bpy.types.Operator):
     bl_idname = "i23d.view_cutout"
     bl_label = "View Larger"
-    bl_description = "Open the cut-out in its own window, as TRELLIS.2 will see it (scroll to zoom)"
+    bl_description = "Open the cut-out in its own window, as the AI will see it (scroll to zoom)"
+
+    back: BoolProperty(name="Back", options={"SKIP_SAVE", "HIDDEN"},
+                       description="Show the back's cut-out (front + back pictures)")
 
     @classmethod
     def poll(cls, context):
@@ -476,7 +534,8 @@ class I23D_OT_view_cutout(bpy.types.Operator):
 
     def execute(self, context):
         check = picture_check_for(context)
-        img = bpy.data.images.load(check.cutout, check_existing=True)
+        path = check.back_cutout if self.back and check.back_cutout else check.cutout
+        img = bpy.data.images.load(path, check_existing=True)
         img.reload()
         before = {w.as_pointer() for w in context.window_manager.windows}
         bpy.ops.screen.userpref_show("INVOKE_DEFAULT")  # a small new window, turned into an image viewer
@@ -521,6 +580,8 @@ class I23D_OT_install_comfy(bpy.types.Operator):
 
     check_only: BoolProperty(name="Only check this PC", options={"SKIP_SAVE", "HIDDEN"},
                              description="Only check the graphics card, memory and disk; download nothing")
+    front_back: BoolProperty(name="Front + back pictures", options={"SKIP_SAVE", "HIDDEN"},
+                             description="Also download the model for front + back pictures (Pixal3D)")
 
     @classmethod
     def poll(cls, context):
@@ -535,13 +596,23 @@ class I23D_OT_install_comfy(bpy.types.Operator):
     def invoke(self, context, event):
         if self.check_only:
             return self.execute(context)
+        title = "Download for Front + Back" if self._only_front_back(context) else "Install ComfyUI + TRELLIS.2"
         return context.window_manager.invoke_props_dialog(
-            self, width=460, title="Install ComfyUI + TRELLIS.2", confirm_text="Download and Install")
+            self, width=460, title=title, confirm_text="Download and Install")
+
+    def _only_front_back(self, context):
+        return self.front_back and not preferences.setup_missing(preferences.get(context))
 
     def draw(self, context):
         col = self.layout.column(align=True)
-        col.label(text=f"This downloads about {installer.DOWNLOAD_GB} GB (ComfyUI and the TRELLIS.2 "
-                       "model files) into:", icon="IMPORT")
+        if self._only_front_back(context):
+            what = f"about {installer.FRONT_BACK_GB} GB (Pixal3D's model for front + back pictures)"
+        elif self.front_back:
+            what = (f"about {installer.DOWNLOAD_GB + installer.FRONT_BACK_GB} GB (ComfyUI, the TRELLIS.2 "
+                    "model files and Pixal3D's model for front + back pictures)")
+        else:
+            what = f"about {installer.DOWNLOAD_GB} GB (ComfyUI and the TRELLIS.2 model files)"
+        col.label(text=f"This downloads {what} into:", icon="IMPORT")
         col.label(text=f"    {self._folder(context)}")
         col.separator()
         col.label(text="It runs in its own window, where you can watch it.")
@@ -551,7 +622,7 @@ class I23D_OT_install_comfy(bpy.types.Operator):
     def execute(self, context):
         folder = self._folder(context)
         try:
-            installer.start(folder, check_only=self.check_only)
+            installer.start(folder, check_only=self.check_only, front_back_too=self.front_back)
         except OSError as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}

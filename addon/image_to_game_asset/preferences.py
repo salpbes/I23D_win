@@ -2,6 +2,7 @@
 
 import textwrap
 import time
+from pathlib import Path
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
@@ -127,6 +128,24 @@ def setup_missing(prefs) -> bool:
         _workflow = _workflow or tr.load_workflow()
         _folder_check.update(key=key, time=now, missing=bool(tr.check_folder(key, _workflow)))
     return _folder_check["missing"]
+
+
+_front_back_check = {"key": None, "time": 0.0, "missing": False}
+
+
+def front_back_missing(prefs) -> bool:
+    """Is the extra model file for front + back pictures missing from the ComfyUI folder?
+    (False when there is no such folder, e.g. someone running their own ComfyUI elsewhere:
+    Generate asks that ComfyUI instead.) Cached like setup_missing."""
+    global _workflow
+    key, now = bpy.path.abspath(prefs.comfy_dir), time.monotonic()
+    if key != _front_back_check["key"] or now - _front_back_check["time"] > 3:
+        _workflow = _workflow or tr.load_workflow()
+        models = Path(key).expanduser() / "ComfyUI" / "models"
+        missing = models.is_dir() and any(not (models / m["folder"] / m["file"]).is_file()
+                                          for m in tr.front_back_models(_workflow))
+        _front_back_check.update(key=key, time=now, missing=missing)
+    return _front_back_check["missing"]
 
 
 def get(context=None) -> I23D_Preferences:

@@ -33,8 +33,22 @@ def _draw_setup(layout, context):
     col.label(text=f"About {installer.DOWNLOAD_GB} GB, no account needed.")
     big = box.row()
     big.scale_y = 1.5
-    big.operator("i23d.install_comfy", icon="IMPORT")
+    # Front + back chosen already? Then fetch its model in the same go.
+    big.operator("i23d.install_comfy", icon="IMPORT").front_back = context.scene.i23d.views == "FRONT_BACK"
     box.operator("i23d.check_setup", text="Already have it? Check Setup", icon="CHECKMARK")
+
+
+def _draw_front_back_download(layout, context):
+    """Front + back chosen, the rest is installed, but Pixal3D's model isn't there yet."""
+    prefs = preferences.get(context)
+    if installer.working() or preferences.setup_missing(prefs) or not preferences.front_back_missing(prefs):
+        return
+    box = layout.box()
+    col = box.column(align=True)
+    _wrapped(col, f"Front + back pictures need one more download: about {installer.FRONT_BACK_GB} GB "
+                  "(Pixal3D, first time only).", "IMPORT", width=30)
+    op = box.operator("i23d.install_comfy", text="Download for Front + Back", icon="IMPORT")
+    op.front_back = True
 
 
 def _wrapped(layout, text, icon, width=34):
@@ -65,7 +79,7 @@ def _draw_picture_check(layout, context):
     if s.is_running:
         if check is not None and not check.running and not check.error:
             _draw_cutout(layout, check)
-            layout.operator("i23d.view_cutout", icon="ZOOM_IN")
+            _draw_view_larger(layout.row(align=True), check)
         return
     if check is None:
         layout.operator("i23d.check_picture", icon="VIEWZOOM")
@@ -80,12 +94,26 @@ def _draw_picture_check(layout, context):
         return
     _draw_cutout(layout, check)
     row = layout.row(align=True)
-    row.operator("i23d.view_cutout", icon="ZOOM_IN")
+    _draw_view_larger(row, check)
     row.operator("i23d.check_picture", text="", icon="FILE_REFRESH")
 
 
+def _draw_view_larger(row, check):
+    if check.back_cutout:
+        row.operator("i23d.view_cutout", text="Front", icon="ZOOM_IN")
+        row.operator("i23d.view_cutout", text="Back", icon="ZOOM_IN").back = True
+    else:
+        row.operator("i23d.view_cutout", icon="ZOOM_IN")
+
+
 def _draw_cutout(layout, check):
-    if check.icon_id:
+    if check.icon_id and check.back_icon_id:
+        row = layout.row()
+        for label, icon in (("Front", check.icon_id), ("Back", check.back_icon_id)):
+            col = row.column(align=True)
+            col.label(text=label)
+            col.template_icon(icon_value=icon, scale=5)
+    elif check.icon_id:
         col = layout.column()
         col.template_icon(icon_value=check.icon_id, scale=9)
     col = layout.column(align=True)
@@ -105,10 +133,21 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         # 1. Picture -> model
         box = layout.box()
         box.label(text="1. Picture → 3D model", icon="IMAGE_DATA")
+        row = box.row()
+        row.enabled = not s.is_running
+        row.prop(s, "views", expand=True)
         col = box.column(align=True)
         col.enabled = not s.is_running
+        if s.views == "FRONT_BACK":
+            col.label(text="Front, or front and back side by side:")
         col.prop(s, "image_path", text="")
+        if s.views == "FRONT_BACK":
+            col.label(text="Back (only if it's a separate picture):")
+            col.prop(s, "back_path", text="")
+            col.separator()
         col.prop(s, "asset_name")
+        if s.views == "FRONT_BACK":
+            _draw_front_back_download(box, context)
         _draw_picture_check(box, context)
         row = box.row()
         row.enabled = not s.is_running
