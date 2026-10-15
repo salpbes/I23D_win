@@ -163,8 +163,65 @@ What matters:
 - **The same size** in both views.
 - **Nothing else** in the picture: no titles, colour swatches or turntables.
 - **Space between the two views**, so the add-on can tell where the front ends.
+- **Soft, even light, no shadows on the object:** the add-on paints the picture's colours onto
+  the model, light and shadow included.
 
-Two separate pictures (one front, one back) work too.
+Two separate pictures (one front, one back) work too, and give each view the full resolution.
+
+<details>
+<summary>A more detailed prompt (ChatGPT, Gemini or other image AIs)</summary>
+
+Fill in the SUBJECT lines. ChatGPT follows long prompts well; if Gemini skips a rule, ask for
+just that fix ("same image, but without the shadow on the face") instead of starting over.
+
+```text
+Create two separate images of the SAME object, a front view and a back view, as references for
+making a 3D model.
+
+SUBJECT
+- Object: [the character, creature, vehicle, furniture or prop]
+- Design, period or model: [details]
+- Materials and colours: [describe]
+- Accessories or parts it must have: [list, or "none"]
+- Leave out: [list, or "none"]
+
+VIEWS
+- Make the FRONT image first, then use it as the reference for the BACK image.
+- FRONT: exactly straight-on from the front. BACK: exactly straight-on from behind, as if the
+  object were turned 180 degrees around its vertical axis. Do not mirror the front image.
+- Camera level with the middle of the object, long lens, no perspective distortion, no tilt,
+  no three-quarter view.
+- Keep left and right: a part on the object's right side is still on its right seen from behind.
+
+CONSISTENCY
+- One identical object in both: same proportions, outline, pose, materials, colours, wear and
+  accessories. Rotate the whole object; don't move its parts.
+- Same canvas size, same scale, same lighting. The top and bottom of the object at the same
+  height in both images.
+
+POSE AND FRAMING
+- The whole object, nothing cut off, centred on a square canvas with a small margin around it.
+- Characters: neutral A-pose, arms slightly away from the body, legs straight, feet forward.
+- Other objects: their normal upright position.
+
+LOOK
+- Realistic proportions and plausible construction; accurate for real models or periods.
+- If a back detail is unknown, choose the most plausible, typical design.
+- Soft, even, neutral light. Matte look: no shiny reflections or highlights, no cast shadows on
+  the object itself (for example under a hat or helmet brim), no depth of field.
+
+BACKGROUND
+- A truly transparent background if you can make real transparency; otherwise plain, flat pure
+  white (#FFFFFF). Never draw a checkerboard.
+- Only the object: no floor, shadow, platform, scenery, text, labels or watermark.
+
+OUTPUT
+- Two separate square images, as large as you can make them (1024 x 1024 or more).
+- Before you finish, check that both views match in scale, pose, proportions and where each
+  part is.
+```
+
+</details>
 
 ![A Gemini picture with the front and the back side by side](images/front_back_gemini_picture.jpg)
 
