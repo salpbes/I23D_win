@@ -22,7 +22,7 @@ Plan for about 15 minutes of clicking, plus a one-time download of about 11 GB.
 ### 1. Download the add-on
 
 From the [latest release](https://github.com/salpbes/I23D_win/releases/latest), download
-`image_to_game_asset-2.4.0.zip`. **Don't unzip it.** That one file is all you need.
+`image_to_game_asset-2.5.0.zip`. **Don't unzip it.** That one file is all you need.
 
 ### 2. Open "Install from Disk"
 
@@ -185,6 +185,11 @@ larger.
 ### 15. Press "Generate 3D Model"
 
 Everything else works as before. The model takes about as long as with one picture.
+
+The add-on also paints the pictures' real colours onto the parts of the model they show clearly,
+so faces and small details look like your picture (*Paint the pictures onto the model*, on by
+default). If you prefer the AI's own colours, untick it and press the colour button 🎨 next to
+**Clean Selected**.
 
 ## Next
 

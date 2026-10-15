@@ -221,9 +221,16 @@ def _add_back(prompt: dict, back: str | None, split: tuple[int, int, int] | None
 
 
 def _use_front_back(prompt: dict, workflow: dict, back, split) -> None:
-    """Swap TRELLIS.2's one-picture model for Pixal3D's multi-view one, fed the front and back."""
+    """Swap TRELLIS.2's one-picture model for Pixal3D's multi-view one, fed the front and back.
+    The cut-outs it sees come back as previews (marked i23d_view) for painting them onto the model."""
     fb = workflow["front_back"]
+    front_cutout = _find(prompt, "ImageCropToMask")
     _, back_cutout = _add_back(prompt, back, split)
+    for view, cutout in (("front", front_cutout), ("back", back_cutout)):
+        shown = next((k for k, n in prompt.items() if n["class_type"] == "PreviewImage"
+                      and n["inputs"].get("images") == [cutout, 0]), None)
+        shown = shown or _add_node(prompt, "PreviewImage", {"images": [cutout, 0]}, cutout)
+        prompt[shown]["_meta"]["i23d_view"] = view
     prompt[_find(prompt, "UNETLoader")]["inputs"]["unet_name"] = fb["unet"]
     node = prompt[_find(prompt, "Trellis2Conditioning")]
     node["class_type"] = "Pixal3DMultiViewConditioning"
@@ -466,6 +473,8 @@ class TrellisJob:
         self.workflow = workflow or load_workflow()
         self.fraction, self.label = 0.0, "Starting..."
         self.glb_path: str | None = None
+        self.views_path: str | None = None  # front + back: the cameras and cut-outs (_save_views)
+        self._prompt: dict | None = None
         self.error: str | None = None
         self.cancelled = False
         self.prompt_id: str | None = None
@@ -518,7 +527,7 @@ class TrellisJob:
             ws = WebSocket(self.url, f"/ws?clientId={client_id}")  # before queueing: miss nothing
             self.label = "Sending the picture to ComfyUI"
             image_name = upload_image(self.url, self.image)
-            prompt = self._make_prompt(image_name)
+            prompt = self._prompt = self._make_prompt(image_name)
             self.prompt_id = self._queue(prompt, client_id)
             self._follow(ws, ProgressTracker(prompt))
         except Exception as exc:  # shown in the panel
@@ -637,8 +646,33 @@ class TrellisJob:
             raise RuntimeError("ComfyUI finished but saved no 3D file.")
         target = self._fetch(files[0], self.out_base.with_suffix(".glb"))
         self.glb_path = str(target)
+        self._save_views(entry.get("outputs", {}))
         self.fraction, self.label = 1.0, "Model saved"
         self._say(f"saved {target} ({target.stat().st_size / 1e6:.1f} MB)")
+
+    def _save_views(self, outputs: dict) -> None:
+        """Front + back: keep the cut-outs Pixal3D saw and its cameras, for painting them onto the
+        model (photo_paint.read_views reads this)."""
+        if not self._prompt:
+            return
+        views = {n["_meta"]["i23d_view"]: nid for nid, n in self._prompt.items()
+                 if n.get("_meta", {}).get("i23d_view")}
+        pictures = {}
+        for view, nid in views.items():
+            images = outputs.get(nid, {}).get("images", [])
+            if images:
+                pictures[view] = self._fetch(images[0], self.out_base.with_name(f"{self.out_base.name}_{view}_view.png"))
+        if len(pictures) != len(views) or not views:
+            return
+        crop = self._prompt[_find(self._prompt, "ImageCropToMask")]["inputs"]
+        doc = {"about": "Cameras of a Pixal3D multi-view run (Image to Game Asset add-on)",
+               "fov": self.workflow["front_back"]["fov"], "pad": crop["pad_factor"],
+               "views": [{"name": v, "azimuth": {"front": 0.0, "back": 180.0}[v], "picture": p.name}
+                         for v, p in pictures.items()]}
+        path = self.out_base.with_name(f"{self.out_base.name}_views.json")
+        path.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+        self.views_path = str(path)
+        self._say(f"saved the views Pixal3D saw: {path.name}")
 
     def _fetch(self, f: dict, target: Path) -> Path:
         """Download one of ComfyUI's output files."""

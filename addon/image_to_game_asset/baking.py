@@ -405,3 +405,167 @@ def bake_colours(context, source, target, *, size=2048, match_stats=None, match_
             image.save()
         image.pack()   # stays inside the .blend and is embedded in .glb exports
     return images
+
+
+# ---------------------------------------------------------------- front + back: paint the pictures on
+def _base_colour_image_node(obj):
+    """The image node that gives obj's (first textured) material its base colour."""
+    for mat in obj.data.materials:
+        socket = _base_colour_socket(mat)
+        todo = [link.from_node for link in socket.links] if socket else []
+        while todo:
+            node = todo.pop()
+            if node.type == "TEX_IMAGE" and node.image is not None:
+                return node
+            todo += [link.from_node for inp in node.inputs for link in inp.links]
+    return None
+
+
+def _read_picture(path) -> np.ndarray:
+    """A picture's colours, rows from the top, 0-1 (as stored: sRGB)."""
+    img = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        w, h = img.size
+        px = np.empty(w * h * 4, np.float32)
+        img.pixels.foreach_get(px)
+        return px.reshape(h, w, 4)[::-1, :, :3].copy()
+    finally:
+        bpy.data.images.remove(img)
+
+
+def _bake_geometry(context, obj, size: int) -> tuple[np.ndarray, np.ndarray]:
+    """Where each texel of obj's texture sits on the model and which way it faces (world space,
+    rows from the bottom as Blender stores them). Texels no face uses have a zero normal."""
+    out = []
+    mats = list(obj.data.materials)
+    scene, view_layer = context.scene, context.view_layer
+    prev_engine, prev_samples = scene.render.engine, scene.cycles.samples
+    prev_active = view_layer.objects.active
+    prev_sel = [o for o in view_layer.objects if o.select_get()]
+    hidden, hide_render = obj.hide_get(), obj.hide_render
+    try:
+        obj.hide_set(False)
+        obj.hide_render = False
+        scene.render.engine = "CYCLES"
+        scene.cycles.samples = 1
+        for o in prev_sel:
+            o.select_set(False)
+        obj.select_set(True)
+        view_layer.objects.active = obj
+        for socket in ("Position", "Normal"):
+            img = bpy.data.images.new(f"I23D_bake_{socket}", size, size, alpha=True, float_buffer=True)
+            img.pixels.foreach_set(np.zeros(size * size * 4, np.float32))
+            mat = bpy.data.materials.new(f"I23D_bake_{socket}")
+            mat.use_nodes = True
+            nt = mat.node_tree
+            nt.nodes.clear()
+            geo = nt.nodes.new("ShaderNodeNewGeometry")
+            em = nt.nodes.new("ShaderNodeEmission")
+            outn = nt.nodes.new("ShaderNodeOutputMaterial")
+            nt.links.new(geo.outputs[socket], em.inputs["Color"])
+            nt.links.new(em.outputs["Emission"], outn.inputs["Surface"])
+            node = nt.nodes.new("ShaderNodeTexImage")
+            node.image = img
+            nt.nodes.active = node
+            obj.data.materials.clear()
+            for _ in mats or [None]:
+                obj.data.materials.append(mat)
+            try:
+                with context.temp_override(**_view3d_override(context), active_object=obj, object=obj,
+                                           selected_objects=[obj], selected_editable_objects=[obj]):
+                    bpy.ops.object.bake(type="EMIT", margin=0, use_clear=False)
+                px = np.empty(size * size * 4, np.float32)
+                img.pixels.foreach_get(px)
+                out.append(px.reshape(size, size, 4)[..., :3])
+            finally:
+                bpy.data.images.remove(img)
+                obj.data.materials.clear()
+                for m in mats:
+                    obj.data.materials.append(m)
+                bpy.data.materials.remove(mat)
+    finally:
+        scene.render.engine, scene.cycles.samples = prev_engine, prev_samples
+        obj.select_set(False)
+        for o in prev_sel:
+            if o.name in view_layer.objects:
+                o.select_set(True)
+        view_layer.objects.active = prev_active
+        obj.hide_set(hidden)
+        obj.hide_render = hide_render
+    return out[0], out[1]
+
+
+def paint_from_pictures(context, obj, views_path, max_size: int = 4096) -> str:
+    """Front + back (Pixal3D): paint the cut-outs Pixal3D saw onto obj's colour texture, where
+    they see it clearly ("Pixel Match"). obj is the original, as imported. Keeps the AI's texture
+    too (use_painted_colours switches). Returns a short note."""
+    from . import photo_paint
+
+    node = _base_colour_image_node(obj)
+    if node is None:
+        return "no colour texture to paint"
+    ai_image = bpy.data.images.get(obj.get("i23d_ai_colours", "")) or node.image  # never paint twice
+    w, h = ai_image.size
+    size = min(max(w, h), max_size)
+    views = []
+    for cam, picture_path in photo_paint.read_views(views_path):
+        picture = _read_picture(picture_path)
+        views.append((cam, picture, photo_paint.object_mask(picture)))
+
+    positions, normals = _bake_geometry(context, obj, size)
+    used = np.linalg.norm(normals, axis=2) > 0.5
+    # the cameras live in the model's own space, as it was imported
+    to_local = np.array(obj.matrix_world.inverted())
+    points = positions[used] @ to_local[:3, :3].T + to_local[:3, 3]
+    nrm = normals[used] @ np.array(obj.matrix_world)[:3, :3]   # inverse-transpose of to_local
+    del positions, normals
+
+    source = ai_image.copy()
+    if (w, h) != (size, size):
+        source.scale(size, size)
+    px = np.empty(size * size * 4, np.float32)
+    source.pixels.foreach_get(px)
+    if source is not ai_image:
+        bpy.data.images.remove(source)
+    result = px.reshape(size, size, 4)
+    result[..., 3] = 1.0
+    new, trust, shift = photo_paint.paint(points, nrm, result[used][:, :3], views)
+    rgb = result[..., :3]
+    rgb[used] = new
+    # carry the new colours a few texels past each texture island, so its edges don't show
+    filled = used.copy()
+    for _ in range(4):
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            grow = photo_paint._shift(filled, dy, dx, False) & ~filled
+            ys, xs = np.nonzero(grow)
+            rgb[ys, xs] = rgb[ys - dy, xs - dx]
+            filled |= grow
+
+    name = f"{obj.name}_painted"
+    old = bpy.data.images.get(name)
+    if old is not None:
+        bpy.data.images.remove(old)
+    painted = bpy.data.images.new(name, size, size)
+    painted.pixels.foreach_set(result.ravel())
+    painted.pack()
+    for image in (ai_image, painted):  # only one is in use at a time; keep both in the .blend
+        image.use_fake_user = True
+    obj["i23d_ai_colours"] = ai_image.name
+    obj["i23d_painted_colours"] = painted.name
+    obj["i23d_views"] = str(views_path)
+    node.image = painted
+    share = float((trust > 0.5).mean())
+    return f"pictures painted on ({share:.0%} of the surface)"
+
+
+def use_painted_colours(obj, on: bool) -> bool:
+    """Switch a front + back original between the painted colours and the AI's own.
+    False if it has no painted colours."""
+    names = obj.get("i23d_ai_colours", ""), obj.get("i23d_painted_colours", "")
+    if not all(names) or not all(n in bpy.data.images for n in names):
+        return False
+    node = _base_colour_image_node(obj)
+    if node is None:
+        return False
+    node.image = bpy.data.images[names[1] if on else names[0]]
+    return True

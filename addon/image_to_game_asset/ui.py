@@ -148,6 +148,9 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         col.prop(s, "asset_name")
         if s.views == "FRONT_BACK":
             _draw_front_back_download(box, context)
+            row = box.row()
+            row.enabled = not s.is_running
+            row.prop(s, "paint_pictures")
         _draw_picture_check(box, context)
         row = box.row()
         row.enabled = not s.is_running

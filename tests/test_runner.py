@@ -152,6 +152,7 @@ try:
     assert any(l.startswith("Step 4 of 4") for l in labels)
     log = (out / "test_log.txt").read_text()
     assert "queued" in log and "saved" in log
+    assert job.views_path is None, "one picture: no views to paint"
     print("normal run OK")
 
     # ---- the graphics card fails
@@ -206,6 +207,12 @@ try:
     job.wait(60)
     assert job.error is None and Path(job.glb_path).is_file(), job.error
     assert "back picture" in (out / "front_back_log.txt").read_text()
+    # the cut-outs Pixal3D saw and its cameras are kept, for painting the pictures on
+    import json
+    views = json.loads(Path(job.views_path).read_text())
+    assert views["fov"] == 20 and views["pad"] == 1.1, views
+    assert [(v["name"], v["azimuth"]) for v in views["views"]] == [("front", 0.0), ("back", 180.0)]
+    assert all((out / v["picture"]).read_bytes()[:4] == b"\x89PNG" for v in views["views"])
     print("front + back jobs OK")
 
     # ---- quiet timer

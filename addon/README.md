@@ -7,7 +7,7 @@ computer (127.0.0.1) and is started with `--offline`.
 ## Install
 Step by step with screenshots: https://github.com/salpbes/I23D_win/blob/main/docs/GETTING_STARTED.md
 
-1. Download `image_to_game_asset-2.4.0.zip` from the
+1. Download `image_to_game_asset-2.5.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender: **Edit › Preferences › Get Extensions** › ⌄ menu (top right) › **Install from Disk…**
    and pick the zip.
@@ -32,7 +32,8 @@ somewhere else).
    **Front + back**: choose it at the top, then pick one picture with the front and back side by
    side (the add-on splits it), or the front and the back as two pictures. Pixal3D then makes
    the model from both, so the back isn't guessed. Best with straight-on views, level camera,
-   the object the same size in both. The first time, the add-on starts
+   the object the same size in both. *Paint the pictures onto the model* (on) then copies the
+   pictures' real colours onto the parts they show clearly: sharper faces and details. The first time, the add-on starts
    ComfyUI in the background (about 30 s). A model takes under 3 minutes on an RTX 5060 Ti 16 GB.
    Blender stays usable; the bar shows each step. When it's done, the view switches to colour
    (Material Preview) and turns to the new model; turn that off with *Show the new model in
@@ -45,7 +46,8 @@ somewhere else).
    Plain presets (Clay, Gold, …) are still there.
    To see textures, switch the viewport to **Material Preview**.
    The original is kept hidden, so you can re-clean at another size (e.g. `axe_15k`, `axe_5k`).
-3. **Export** – press **Export .glb** (one file per selected model).
+3. **Export** – press **Export .glb** (one file per selected model). Next to each `.glb`,
+   `<name>.licences.json` lists the models that made it and their licences.
 
 Tick *Clean automatically* and *Export .glb automatically* for a one-click run.
 

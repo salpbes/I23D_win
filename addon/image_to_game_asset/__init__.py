@@ -9,6 +9,7 @@ Module map (each file has one job):
     cleanup.py         turn a messy AI mesh into a clean, light game mesh
     materials.py       simple material presets
     baking.py          bake TRELLIS.2's own colours onto the light game mesh
+    photo_paint.py     front + back: paint the pictures the AI saw onto its model (no Blender code)
     exporter.py        .glb export
     pipeline.py        glue: import, organise, clean, export (used by operators)
     properties.py      the panel's settings

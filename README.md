@@ -19,7 +19,7 @@ in about 2½ minutes.</sub>
 | **Time per model** | under 3 minutes at Standard detail (1024), including starting ComfyUI; peak graphics memory 11.5 GB |
 | **Needs** | Windows 10/11, NVIDIA card with 16 GB (12 GB may work), ~25 GB free disk, Blender 4.2 or newer; no account of any kind |
 
-**Get started:** download `image_to_game_asset-2.4.0.zip` from the
+**Get started:** download `image_to_game_asset-2.5.0.zip` from the
 [latest release](https://github.com/salpbes/I23D_win/releases/latest), then follow
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md): every click, with screenshots, from the download
 to your first `.glb`. No Blender experience needed. The short version is in [Quick start](#quick-start-windows).
@@ -96,6 +96,24 @@ How to use it: choose **Front + back** at the top of the panel, pick the picture
 the back as two pictures), and press Generate. The first time, the panel offers the extra download
 (about 6 GB). Tips for the pictures, and a prompt that works, are in
 [GETTING_STARTED.md](docs/GETTING_STARTED.md#front--back-pictures-optional).
+
+### The pictures painted on (new in 2.5.0)
+
+The AI paints its models a little soft: faces, badges and buckles come out blurred. Pixal3D knows
+exactly where its two cameras were, so the add-on can trace every point of the model back to the
+pixel of the picture that shows it, and copy the picture's **real colours** onto every part the
+picture shows clearly. Sides and hidden parts keep the AI's colours, nudged towards the
+pictures' colours so there is no seam. It adds about 15 seconds.
+
+![Close-ups: the Gemini picture, Pixal3D's own colours and the pictures painted on](docs/images/pixel_match_soldier.jpg)
+
+<sub>Left: the Gemini picture. Middle: Pixal3D's own colours. Right: the pictures painted on: the
+face, pockets, pouches and backpack straps look like the picture.</sub>
+
+It is on by default (*Paint the pictures onto the model*, under Front + back). The light and
+shadow in the picture come along too (here, the helmet's shadow on the forehead); untick it and
+press the colour button 🎨 for the AI's own colours. The idea comes from
+[AssetFurnace's Pixel Match](https://github.com/Bingeljell/image-to-3dlab/blob/main/docs/pixel-match.md).
 
 ## How the pieces talk to each other
 
@@ -245,7 +263,7 @@ pie showData
 New to Blender? [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) walks through every click,
 with screenshots, from the download to your first `.glb`.
 
-1. **Download** `image_to_game_asset-2.4.0.zip` from the
+1. **Download** `image_to_game_asset-2.5.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. **Install it:** Blender › Edit › Preferences › Get Extensions › ⌄ (top right) ›
    **Install from Disk…** › pick the zip.
@@ -300,6 +318,7 @@ addon/image_to_game_asset/   the Blender add-on (one job per file, see __init__.
   workflows/                   the TRELLIS.2 ComfyUI workflow + the model files it needs (and Pixal3D's, for front + back)
   cleanup.py                   messy AI mesh → light, closed game mesh
   baking.py                    bake TRELLIS.2's colours, metal/roughness + normal maps onto the game mesh (+ photo colour match)
+  photo_paint.py               front + back: paint the pictures the AI saw onto its model (Pixel Match)
   materials.py / exporter.py   material presets / .glb export
   pipeline.py                  glue used by the buttons
   install/install_comfyui.ps1  the ComfyUI + TRELLIS.2 installer (ships in the zip)
@@ -345,6 +364,8 @@ With the real ComfyUI and TRELLIS.2 (about 4 minutes, uses the graphics card):
 - **DINOv3** by Meta: picture understanding (its own licence; check before commercial use)
 - **Pixal3D** by Tencent ARC Lab and Tsinghua University (MIT; its third-party parts keep their own
   terms, see its NOTICE): front + back pictures. https://huggingface.co/TencentARC/Pixal3D
+- **AssetFurnace** by Bingeljell (Apache-2.0): the idea of painting the pictures back onto the model
+  ("Pixel Match"). The add-on has its own implementation. https://github.com/Bingeljell/image-to-3dlab
 - Built with help from Claude (Anthropic).
 
 Licences in this repo:

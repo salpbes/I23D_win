@@ -62,6 +62,11 @@ class I23D_Settings(bpy.types.PropertyGroup):
         name="Back", subtype="FILE_PATH", update=_recheck,
         description="The back of the same object, straight on and the same size as the front. Leave "
                     "empty when the picture above shows the front and back side by side")
+    paint_pictures: BoolProperty(
+        name="Paint the pictures onto the model", default=True,
+        description="Front + back: copy the pictures' real colours onto every part of the model they "
+                    "show clearly (sharper faces, badges, buckles). Sides keep the AI's colours. Turn "
+                    "off and press the colour button to go back to the AI's colours")
     asset_name: StringProperty(
         name="Name", description="Used for the object and file names (filled in from the picture)")
     check_picture: BoolProperty(

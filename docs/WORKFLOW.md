@@ -7,7 +7,7 @@ Unity, …).
 ## Setting up (once)
 First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with screenshots.
 
-1. Download `image_to_game_asset-2.4.0.zip` from the
+1. Download `image_to_game_asset-2.5.0.zip` from the
    [latest release](https://github.com/salpbes/I23D_win/releases/latest). Don't unzip it.
 2. Blender › Edit › Preferences › Get Extensions › ⌄ (top right) › **Install from Disk…** › pick
    the zip.
@@ -51,6 +51,13 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
   follows your picture instead of a guess. Same steps, about the same time, up to 14 GB graphics
   memory. Best with an exact front and back view, a level camera and the object the same size in
   both; the check warns when their outlines don't match.
+- **The pictures painted on** (Front + back, on by default): Pixal3D knows where its cameras were,
+  so the add-on copies the pictures' real colours onto every part of the model they show clearly
+  (sharper faces, badges, buckles). Sides and hidden parts keep the AI's colours, shifted towards
+  the pictures'. About 15 seconds. The picture's own light and shadow come along; untick *Paint
+  the pictures onto the model* and press 🎨 to go back to the AI's colours (tick it and press 🎨
+  to paint them on later). The cut-outs and cameras are saved next to the model
+  (`<name>_front_view.png`, `<name>_back_view.png`, `<name>_views.json`).
 - **How:** pick the picture, press **Generate**. *Random seed* is on by default, so every run gives
   a different guess for parts the picture can't show (e.g. the back). If a result looks wrong,
   just run it again.
@@ -100,6 +107,9 @@ own object (`name_60k`, `name_15k`, `name_5k`).
 ### 3. Export
 - **What:** writes one `.glb` per selected model (texture packed inside).
 - **Where:** `<output folder>/game-ready` unless you choose a folder.
+- **Licence record:** next to each `.glb`, `<name>.licences.json` lists the models that made it
+  (TRELLIS.2 or Pixal3D, DINOv3, BiRefNet, ComfyUI, the add-on) with their licences and links,
+  the seed and the date. Useful before you sell or publish a model.
 - *Draco* compression (Advanced) makes files smaller; three.js needs the Draco loader for those.
 
 ## Advanced settings (only when needed)

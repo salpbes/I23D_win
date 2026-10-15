@@ -76,8 +76,10 @@ def export_dir(context) -> Path:
     return Path(bpy.path.abspath(custom)).expanduser() if custom else output_dir(context) / "game-ready"
 
 
-def import_original(context, glb_path: str | Path, name: str, image_path: str = "") -> bpy.types.Object:
-    """Import a TRELLIS .glb, merge it into one mesh, and file it under Originals."""
+def import_original(context, glb_path: str | Path, name: str, image_path: str = "",
+                    generator: str = "TRELLIS.2", seed: int | None = None) -> bpy.types.Object:
+    """Import a TRELLIS .glb, merge it into one mesh, and file it under Originals.
+    generator ("TRELLIS.2" or "Pixal3D") and seed are kept for the licence record."""
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(glb_path))
     new = [o for o in bpy.data.objects if o not in before]
@@ -104,6 +106,9 @@ def import_original(context, glb_path: str | Path, name: str, image_path: str = 
     obj[BASE] = name
     if image_path:
         obj["i23d_image"] = image_path      # the picture it came from (used for colour matching)
+    obj["i23d_model"] = generator
+    if seed is not None:
+        obj["i23d_seed"] = int(seed)
     was_shown = originals_shown(context.scene)
     coll = get_collection(context, ORIGINALS)
     _move_to(obj, coll)
@@ -175,6 +180,11 @@ def apply_look(context, game, source) -> str:
     if s.colour_match > 0:
         picture = source.get("i23d_image") or bpy.path.abspath(s.image_path)
         stats = baking.photo_colour_stats(picture) if picture else None
+    # front + back: the pictures painted on, or the AI's own colours
+    views = source.get("i23d_views", "")
+    if s.paint_pictures and views and not source.get("i23d_painted_colours") and Path(views).is_file():
+        baking.paint_from_pictures(context, source, views)
+    baking.use_painted_colours(source, s.paint_pictures)
     to_final = Matrix([list(r) for r in game["i23d_to_final"]]) if "i23d_to_final" in game else Matrix.Identity(4)
     keep = game.matrix_world.copy()
     game.matrix_world = to_final.inverted()          # sit exactly on the original while baking
@@ -204,4 +214,9 @@ def describe(stats: dict) -> str:
 
 
 def export(context, obj: bpy.types.Object) -> Path:
-    return exporter.export_glb(obj, export_dir(context), draco=context.scene.i23d.draco)
+    path = exporter.export_glb(obj, export_dir(context), draco=context.scene.i23d.draco)
+    source = resolve_source(obj)
+    exporter.write_licences(path, generator=source.get("i23d_model", "TRELLIS.2"),
+                            seed=source.get("i23d_seed"),
+                            painted=bool(source.get("i23d_painted_colours")) and context.scene.i23d.paint_pictures)
+    return path

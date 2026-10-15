@@ -12,7 +12,7 @@ import bpy.utils.previews
 import numpy as np
 from bpy.props import BoolProperty
 
-from . import installer, picture_check, pipeline, preferences, trellis_runner as tr
+from . import baking, installer, picture_check, pipeline, preferences, trellis_runner as tr
 
 _job: tr.TrellisJob | None = None        # only one TRELLIS run at a time
 _server: tr.ComfyServer | None = None    # the ComfyUI this add-on started (if any)
@@ -353,13 +353,24 @@ class I23D_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         try:
-            original = pipeline.import_original(context, glb, self._name, bpy.path.abspath(s.image_path))
+            views = _job.views_path
+            original = pipeline.import_original(context, glb, self._name, bpy.path.abspath(s.image_path),
+                                                generator="Pixal3D" if views else "TRELLIS.2", seed=s.seed)
             s.status = "Model imported"
+            if views:
+                original["i23d_views"] = views   # the colour button can paint them on later
+            painted = ""
+            if views and s.paint_pictures:
+                s.status = "Painting the pictures onto the model..."
+                _redraw(context)
+                painted = s.last_result = baking.paint_from_pictures(context, original, views)
             result = original
             if s.auto_clean:
                 s.status = "Cleaning for games..."
                 _redraw(context)
                 result = _clean_and_maybe_export(self, context, original)
+                if painted:
+                    s.last_result += f" · {painted}"
             s.status = f"Done (seed {s.seed})"
             _show_result(context, result)
         except Exception as exc:  # show any Blender-side problem in the panel

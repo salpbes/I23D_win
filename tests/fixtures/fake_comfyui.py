@@ -103,8 +103,12 @@ def run(prompt_id, prompt, client):
     out = {"filename": f"{name}_00001_.glb", "subfolder": folder, "type": "output"}
     ws_send(client, "executing", {"node": save, "prompt_id": prompt_id})
     ws_send(client, "executed", {"node": save, "prompt_id": prompt_id, "output": {"3d": [out]}})
+    outputs = {save: {"3d": [out], "result": [f"{prefix}.glb"]}}
+    for nid, node in prompt.items():  # previews (e.g. the cut-outs a front + back run saw)
+        if node["class_type"] == "PreviewImage":
+            outputs[nid] = {"images": [{"filename": f"preview_{nid}.png", "subfolder": "", "type": "temp"}]}
     history[prompt_id] = {"status": {"status_str": "success", "completed": True, "messages": []},
-                          "outputs": {save: {"3d": [out], "result": [f"{prefix}.glb"]}}}
+                          "outputs": outputs}
     ws_send(client, "executing", {"node": None, "prompt_id": prompt_id})
     ws_send(client, "execution_success", {"prompt_id": prompt_id})
 
