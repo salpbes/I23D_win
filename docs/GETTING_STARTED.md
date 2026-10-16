@@ -178,14 +178,18 @@ picture? The panel's **Length** setting tells the add-on how long the object is 
 ![A tank from front and back only (stubby), with the Length setting (long but generic) and with a side picture (the real shape)](images/front_back_side_tank.jpg)
 
 <details>
-<summary>A more detailed prompt (ChatGPT, Gemini or other image AIs)</summary>
+<summary>A more detailed prompt for three views: front, back and side (ChatGPT, Gemini or other image AIs)</summary>
 
 Fill in the SUBJECT lines. ChatGPT follows long prompts well; if Gemini skips a rule, ask for
 just that fix ("same image, but without the shadow on the face") instead of starting over.
+For people and other objects that aren't long front to back, you can leave out the side view.
+
+One side is enough: most objects look the same from the left and the right, and every extra
+view is another chance for the AI to draw the object slightly differently.
 
 ```text
-Create separate images of the SAME object, a front view and a back view (and for long objects
-such as vehicles or animals, a side view), as references for making a 3D model.
+Create three separate images of the SAME object, as references for making a 3D model:
+a FRONT view, a BACK view and a LEFT SIDE view.
 
 SUBJECT
 - Object: [the character, creature, vehicle, furniture or prop]
@@ -194,32 +198,39 @@ SUBJECT
 - Accessories or parts it must have: [list, or "none"]
 - Leave out: [list, or "none"]
 
+ORDER
+1. Make the FRONT image first.
+2. Make the BACK image, using the front as the reference.
+3. Make the LEFT SIDE image, using the front and back as references.
+
 VIEWS
-- Make the FRONT image first, then use it as the reference for the BACK image.
-- FRONT: exactly straight-on from the front. BACK: exactly straight-on from behind, as if the
-  object were turned 180 degrees around its vertical axis. Do not mirror the front image.
-- Camera level with the middle of the object, long lens, no perspective distortion, no tilt,
-  no three-quarter view.
-- Keep left and right: a part on the object's right side is still on its right seen from behind.
-- SIDE (if asked for): exactly at right angles to the object's side, camera level with its
-  middle, the object's front pointing to the LEFT of the image.
+- FRONT: exactly straight-on from the front.
+- BACK: exactly straight-on from behind, as if the object were turned 180 degrees. Do not
+  mirror the front image.
+- LEFT SIDE: exactly at right angles to the object's left side, as if it were turned 90
+  degrees. The object's front points to the LEFT of the image.
+- In every view: camera level with the middle of the object, long lens, no perspective
+  distortion, no tilt, no three-quarter view.
+- Keep left and right: a part on the object's right side stays on its right in every view.
 
 CONSISTENCY
-- One identical object in every view: same proportions, outline, pose, materials, colours,
-  wear and accessories. Rotate the whole object; don't move its parts.
-- Same canvas size, same scale, same lighting. The top and bottom of the object at the same
-  height in every image.
+- One identical object in all three: same proportions, outline, pose, materials, colours, wear
+  and accessories. Rotate the whole object; don't move its parts.
+- The SAME SCALE in all three: the object's top and bottom at the same height in every image,
+  so its height is identical. Its length in the side view must match its real proportions.
+- Same canvas size and the same lighting in all three.
 
 POSE AND FRAMING
-- The whole object, nothing cut off, centred on a square canvas with a small margin around it.
+- The whole object, nothing cut off (including long parts such as gun barrels, tails, handles),
+  centred on a square canvas with a small margin.
 - Characters: neutral A-pose, arms slightly away from the body, legs straight, feet forward.
 - Other objects: their normal upright position.
 
 LOOK
 - Realistic proportions and plausible construction; accurate for real models or periods.
-- If a back detail is unknown, choose the most plausible, typical design.
+- If a detail is unknown, choose the most plausible, typical design.
 - Soft, even, neutral light. Matte look: no shiny reflections or highlights, no cast shadows on
-  the object itself (for example under a hat or helmet brim), no depth of field.
+  the object itself, no depth of field.
 
 BACKGROUND
 - A truly transparent background if you can make real transparency; otherwise plain, flat pure
@@ -227,10 +238,22 @@ BACKGROUND
 - Only the object: no floor, shadow, platform, scenery, text, labels or watermark.
 
 OUTPUT
-- Separate square images, one per view, as large as you can make them (1024 x 1024 or more).
-- Before you finish, check that the views match in scale, pose, proportions and where each
-  part is.
+- Three separate square images, one per view, as large as you can make them.
+- Before you finish, check that all three views show the same object at the same scale.
 ```
+
+Why some lines matter:
+- **The same scale, height identical:** the add-on measures the object's length from the side
+  picture with its height as the yardstick. A side view drawn bigger or smaller gives the wrong
+  length.
+- **The front points to the LEFT:** this matches the panel's default. If the AI draws it facing
+  right, set *In the side picture, the front points* to **Right**.
+- **Nothing cut off, including long parts:** a cropped gun barrel or tail makes the length too
+  short.
+
+In Blender, pick the three images in the **Front**, **Back** and **Side** boxes (best: each view
+keeps its full resolution). If the AI puts them in one picture instead, that works too when they
+are in the order **front, side, back**, left to right, with space between them.
 
 </details>
 
