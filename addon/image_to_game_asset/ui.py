@@ -147,9 +147,8 @@ class I23D_PT_main(_Base, bpy.types.Panel):
             col.prop(s, "back_path", text="")
             col.label(text="Side (optional, if a picture of its own):")
             col.prop(s, "side_path", text="")
-            row = col.row(align=True)
-            row.label(text="Side picture: front points")
-            row.prop(s, "side_faces", expand=True)
+            col.label(text="In the side picture, the front points:")
+            col.row(align=True).prop(s, "side_faces", expand=True)
             check = operators.picture_check_for(context)
             if check and any(v["name"] in ("left", "right") for v in check.views):
                 col.label(text="Length: measured from the side", icon="CHECKMARK")

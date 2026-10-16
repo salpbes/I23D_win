@@ -51,6 +51,13 @@ First time? [GETTING_STARTED.md](GETTING_STARTED.md) shows every step with scree
   follows your picture instead of a guess. Same steps, about the same time, up to 14 GB graphics
   memory. Best with an exact front and back view, a level camera and the object the same size in
   both; the check warns when their outlines don't match.
+- **Side picture and Length** (Front + back): Pixal3D builds inside a fixed box and expects the
+  object's longest side to fill each view. From the front, a long object (a tank, a car, a horse)
+  shows only its width, so on its own the add-on would tell Pixal3D it is as long as it is wide.
+  So the picture check measures every view's outline, and all views are framed at one scale with
+  room for the length: measured from a **Side** picture (its own file, or the middle view of a
+  front, side, back picture), or else from the **Length (× width)** setting. A side picture is
+  much better: it also gives the side's real shape (see the tank in GETTING_STARTED).
 - **The pictures painted on** (Front + back, on by default): Pixal3D knows where its cameras were,
   so the add-on copies the pictures' real colours onto every part of the model they show clearly
   (sharper faces, badges, buckles). Sides and hidden parts keep the AI's colours, shifted towards

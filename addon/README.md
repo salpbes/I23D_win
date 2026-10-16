@@ -32,7 +32,9 @@ somewhere else).
    **Front + back**: choose it at the top, then pick one picture with the front and back side by
    side (the add-on splits it), or the front and the back as two pictures. Pixal3D then makes
    the model from both, so the back isn't guessed. Best with straight-on views, level camera,
-   the object the same size in both. *Paint the pictures onto the model* (on) then copies the
+   the object the same size in both. Long objects (vehicles, animals): add a **Side** picture
+   (front pointing left or right, as set in the panel), or set **Length** to how many times
+   longer than wide it is. *Paint the pictures onto the model* (on) then copies the
    pictures' real colours onto the parts they show clearly: sharper faces and details. The first time, the add-on starts
    ComfyUI in the background (about 30 s). A model takes under 3 minutes on an RTX 5060 Ti 16 GB.
    Blender stays usable; the bar shows each step. When it's done, the view switches to colour

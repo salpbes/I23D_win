@@ -168,6 +168,15 @@ What matters:
 
 Two separate pictures (one front, one back) work too, and give each view the full resolution.
 
+**Long objects (vehicles, animals, furniture): add a side picture.** From the front and back
+alone, the AI can't see how long something is or what its side looks like: a tank came out as
+long as it was wide. A third picture, exactly from the side, fixes both. Ask for it in the same
+style, for example: *"Same tank, exact side view, camera level with its middle, at right angles
+to its side, the front pointing to the LEFT, same size, colours and background."* No side
+picture? The panel's **Length** setting tells the add-on how long the object is instead.
+
+![A tank from front and back only (stubby), with the Length setting (long but generic) and with a side picture (the real shape)](images/front_back_side_tank.jpg)
+
 <details>
 <summary>A more detailed prompt (ChatGPT, Gemini or other image AIs)</summary>
 
@@ -175,8 +184,8 @@ Fill in the SUBJECT lines. ChatGPT follows long prompts well; if Gemini skips a 
 just that fix ("same image, but without the shadow on the face") instead of starting over.
 
 ```text
-Create two separate images of the SAME object, a front view and a back view, as references for
-making a 3D model.
+Create separate images of the SAME object, a front view and a back view (and for long objects
+such as vehicles or animals, a side view), as references for making a 3D model.
 
 SUBJECT
 - Object: [the character, creature, vehicle, furniture or prop]
@@ -192,12 +201,14 @@ VIEWS
 - Camera level with the middle of the object, long lens, no perspective distortion, no tilt,
   no three-quarter view.
 - Keep left and right: a part on the object's right side is still on its right seen from behind.
+- SIDE (if asked for): exactly at right angles to the object's side, camera level with its
+  middle, the object's front pointing to the LEFT of the image.
 
 CONSISTENCY
-- One identical object in both: same proportions, outline, pose, materials, colours, wear and
-  accessories. Rotate the whole object; don't move its parts.
+- One identical object in every view: same proportions, outline, pose, materials, colours,
+  wear and accessories. Rotate the whole object; don't move its parts.
 - Same canvas size, same scale, same lighting. The top and bottom of the object at the same
-  height in both images.
+  height in every image.
 
 POSE AND FRAMING
 - The whole object, nothing cut off, centred on a square canvas with a small margin around it.
@@ -216,8 +227,8 @@ BACKGROUND
 - Only the object: no floor, shadow, platform, scenery, text, labels or watermark.
 
 OUTPUT
-- Two separate square images, as large as you can make them (1024 x 1024 or more).
-- Before you finish, check that both views match in scale, pose, proportions and where each
+- Separate square images, one per view, as large as you can make them (1024 x 1024 or more).
+- Before you finish, check that the views match in scale, pose, proportions and where each
   part is.
 ```
 
@@ -228,16 +239,24 @@ OUTPUT
 ### 14. Choose "Front + back" and pick the picture
 
 At the top of section 1, click **Front + back**. Then pick the picture in the first box. If the
-front and back are separate pictures, pick the front there and the back in the second box.
+views are separate pictures, pick the front there, the back in the **Back** box and the side (if
+you have one) in the **Side** box. One picture can also hold all of them side by side, in the
+order front, back or front, side, back.
+
+- **In the side picture, the front points Left / Right:** which way the object's front points in the side
+  picture.
+- **Length (× width):** only without a side picture. How long the object is from front to back,
+  compared with its width: people, chairs, barrels 1; cars, horses about 2; tanks about 2.3.
+  With a side picture the add-on measures it and the panel says *Length: measured from the side*.
 
 The first time, the panel says **Front + back pictures need one more download** (about 6 GB).
 Press **Download for Front + Back** and say yes. It downloads in its own window, like the first
 install, and the panel shows the progress.
 
-The check shows both cut-outs and says whether they match. **Front** and **Back** open them
-larger.
+The check shows each cut-out and says whether they match. **Front**, **Back** and **Side** open
+them larger.
 
-![The panel with Front + back chosen, both cut-outs and "Looks good"](images/getting_started/13_front_back.png)
+![The panel with Front + back chosen: front, back and side pictures, their cut-outs and "Looks good"](images/getting_started/13_front_back.png)
 
 ### 15. Press "Generate 3D Model"
 

@@ -23,6 +23,9 @@
 | **Front + back:** "The front and back have different outlines" | One view is taller, wider, turned or cut off, so the two don't line up in 3D | Use an exact front and back view, a level camera and the same size in both. You can still press Generate |
 | **Front + back:** dark patches or shadows on the model (e.g. under the helmet) | *Paint the pictures onto the model* copies the picture's colours, including its light and shadow | Untick it (section 1) and press 🎨 next to **Clean Selected** for the AI's own colours, or use a picture with soft, even light |
 | **Front + back:** painted colours slightly off a part's edge | The cleaned model is a little thicker than the AI's, and the picture and model never match to the pixel; the paint fades out near edges to hide this | Usually invisible in a game. Untick *Paint the pictures onto the model* and press 🎨 if it bothers you |
+| **Front + back:** a long object (tank, car) comes out short and stubby | From the front and back the AI can't see the length | Add a **Side** picture (best: it also gives the side's shape), or set **Length (× width)**, e.g. 2.3 for a tank |
+| **Front + back:** "Checking the pictures first … press Generate again" | The framing is measured from the picture check, which hadn't run yet | Wait a few seconds for the check, then press **Generate** again |
+| "ComfyUI rejected part of the job - …" | ComfyUI accepted the job but would skip the steps that depend on a node it rejected (the reason follows) | Usually a value out of range in a changed workflow; send the log if it happens with the add-on's own settings |
 | **Front + back:** the model looks turned or squashed from the side | Pixal3D places the two pictures exactly 180° apart; a turned view (e.g. "15-degree rotation") ends up in the model, and the side is only guessed | Ask for "straight front view and exact back view, no rotation". The side depth is still a guess |
 
 ## Found while porting (for developers)

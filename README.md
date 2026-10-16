@@ -93,7 +93,9 @@ backpack, no shovel. Right: Pixal3D from front + back: backpack, shovel and rifl
 picture shows them. Same time per model (about 2 minutes), up to 14 GB graphics memory.</sub>
 
 How to use it: choose **Front + back** at the top of the panel, pick the picture (or the front and
-the back as two pictures), and press Generate. The first time, the panel offers the extra download
+the back as two pictures), and press Generate. For long objects (vehicles, animals) add a **side**
+picture: from the front and back alone the AI can't see the length, and a tank comes out stubby.
+With a side view it gets the real shape. The first time, the panel offers the extra download
 (about 6 GB). Tips for the pictures, and a prompt that works, are in
 [GETTING_STARTED.md](docs/GETTING_STARTED.md#front--back-pictures-optional).
 
