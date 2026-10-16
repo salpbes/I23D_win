@@ -62,6 +62,21 @@ class I23D_Settings(bpy.types.PropertyGroup):
         name="Back", subtype="FILE_PATH", update=_recheck,
         description="The back of the same object, straight on and the same size as the front. Leave "
                     "empty when the picture above shows the front and back side by side")
+    side_path: StringProperty(
+        name="Side", subtype="FILE_PATH", update=_recheck,
+        description="Optional: the object seen exactly from one side. It shows how long the object is "
+                    "from front to back, and its side shape. Leave empty when the picture above shows "
+                    "it (front, side, back, side by side) or when there is none")
+    side_faces: EnumProperty(
+        name="In the side picture, the front points",
+        items=[("LEFT", "Left", "The object's front points to the left of the side picture (its left side)"),
+               ("RIGHT", "Right", "The object's front points to the right of the side picture (its right side)")],
+        default="LEFT", update=_recheck)
+    length: FloatProperty(
+        name="Length (front to back)", min=0.3, max=4.0, default=1.0, step=10, precision=1,
+        description="Without a side picture: how long the object is from front to back, as times its "
+                    "width. People, chairs, barrels: 1. Cars, horses: about 2. Tanks: about 2.3. "
+                    "Pixal3D can't see the length in a front and a back picture, so it needs to know")
     paint_pictures: BoolProperty(
         name="Paint the pictures onto the model", default=True,
         description="Front + back: copy the pictures' real colours onto every part of the model they "

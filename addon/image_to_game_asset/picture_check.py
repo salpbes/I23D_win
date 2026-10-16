@@ -93,42 +93,88 @@ def _object(pixels: np.ndarray) -> np.ndarray:
     return np.abs(rgb - np.median(edge, axis=0)).max(axis=2) > 0.12
 
 
-def find_split(pixels: np.ndarray) -> int | None:
-    """In a picture with the front and the back side by side: the column where the back starts
-    (the middle of the widest empty strip near the centre). None if there is no such strip."""
+def find_views(pixels: np.ndarray, most: int = 3) -> list[tuple[int, int]]:
+    """In a picture with several views side by side (front, back, maybe a side): each view's
+    column range (x0, x1), split at the middle of the widest empty strips between them. One
+    range when there is no gap; at most `most` ranges. Tiny specks don't count as views."""
     used = _object(pixels).mean(axis=0) > 0.002  # columns with some of the object in them
     width = len(used)
-    lo, hi = width // 4, width * 3 // 4
-    best_gap, split, start = 0, None, None
-    for x in range(lo, hi + 1):
-        if x < hi and not used[x]:
+    cols = np.nonzero(used)[0]
+    if not len(cols):
+        return []
+    gaps, start = [], None
+    for x in range(cols[0], cols[-1] + 1):
+        if not used[x]:
             start = x if start is None else start
         elif start is not None:
-            if x - start > best_gap:
-                best_gap, split = x - start, (start + x) // 2
+            if x - start >= max(4, width // 100):
+                gaps.append((start, x))
             start = None
-    if split is None or best_gap < max(4, width // 100) or not used[:split].any() or not used[split:].any():
-        return None
-    return split
+    weight = _object(pixels).sum(axis=0)
+    gaps = sorted(gaps, key=lambda g: g[1] - g[0], reverse=True)
+    while True:
+        cuts = sorted((a + b) // 2 for a, b in gaps[:most - 1])
+        edges = [0] + cuts + [width]
+        mass = [weight[a:b].sum() for a, b in zip(edges, edges[1:])]
+        if len(mass) == 1 or min(mass) >= 0.05 * max(mass):
+            return list(zip(edges, edges[1:]))
+        gaps.remove(next(g for g in gaps if (g[0] + g[1]) // 2 in cuts))  # a speck, not a view
+
+
+def object_size(mask: np.ndarray) -> tuple[int, int] | None:
+    """Width and height (pixels) of the object in a background-removal mask, counted the way
+    ComfyUI's ImageCropToMask counts it (clearly inside the mask). None if there is none."""
+    m = np.asarray(mask, dtype=float)
+    if m.ndim == 3:
+        m = m[..., :3].mean(axis=2)
+    if m.max() > 1:
+        m = m / 255
+    obj = m > 0.8
+    rows, cols = np.nonzero(obj.any(axis=1))[0], np.nonzero(obj.any(axis=0))[0]
+    return None if not len(rows) else (int(cols[-1] - cols[0] + 1), int(rows[-1] - rows[0] + 1))
+
+
+def framing(sizes: dict[str, tuple[int, int]], length: float = 1.0, rig: float = 1.1,
+            most: float = 4.0) -> tuple[dict[str, float], tuple[float, float]]:
+    """How to frame each view for Pixal3D, so all of them share one scale.
+
+    Pixal3D's rig expects the object's LONGEST side to span 1/rig of every view. From the front a
+    tank shows only its width and height, so framing that tightly would squash its length into
+    its width. sizes: each view's object size in its own picture (pixels), by view name ("front",
+    "back", "left", "right"). The height is the common unit: width = front width / height;
+    length (front to back) is measured from a side view, or else `length` x the width.
+    Returns each view's framing (the object's outline spans 1/framing of the cut-out) and the
+    object's (width, length) in heights."""
+    fw, fh = sizes["front"]
+    width = fw / fh
+    if "back" in sizes:
+        width = (width + sizes["back"][0] / sizes["back"][1]) / 2
+    side = next((sizes[k] for k in ("left", "right") if k in sizes), None)
+    depth = side[0] / side[1] if side else width * length
+    longest = max(1.0, width, depth)
+    pads = {name: min(most, rig * longest * h / max(w, h)) for name, (w, h) in sizes.items()}
+    return pads, (width, depth)
 
 
 def _shape(mask: np.ndarray) -> float:
     """Height / width of the object in a mask (0 if empty)."""
-    m = np.asarray(mask, dtype=float)
-    if m.ndim == 3:
-        m = m[..., :3].mean(axis=2)
-    obj = m > (127 if m.max() > 1 else 0.5)
-    rows, cols = np.nonzero(obj.any(axis=1))[0], np.nonzero(obj.any(axis=0))[0]
-    return 0.0 if not len(rows) else (rows[-1] - rows[0] + 1) / (cols[-1] - cols[0] + 1)
+    size = object_size(mask)
+    return 0.0 if size is None else size[1] / size[0]
 
 
-def pair_notes(front_mask: np.ndarray, back_mask: np.ndarray) -> list[Note]:
-    """Do the front and back show the same object the same way? Each mask on its own first."""
+VIEW_LABELS = {"front": "Front", "back": "Back", "left": "Side", "right": "Side"}
+
+
+def views_notes(masks: dict[str, np.ndarray]) -> list[Note]:
+    """Do the views show the same object the same way? Each mask on its own first."""
     notes = []
-    for side, mask in (("Front", front_mask), ("Back", back_mask)):
-        notes += [Note(n.good, f"{side}: {n.text}") for n in mask_notes(mask) if not n.good]
-    front, back = _shape(front_mask), _shape(back_mask)
+    for name, mask in masks.items():
+        notes += [Note(n.good, f"{VIEW_LABELS[name]}: {n.text}") for n in mask_notes(mask) if not n.good]
+    front, back = _shape(masks["front"]), _shape(masks.get("back", masks["front"]))
     if front and back and abs(front - back) / max(front, back) > 0.12:
         notes.append(Note(False, "The front and back have different outlines (one taller or wider than "
                                  "the other). Both should show the whole object, straight on, the same size."))
-    return notes or [Note(True, "Looks good: front and back clearly cut out, and they match.")]
+    if notes:
+        return notes
+    names = " and ".join(", ".join(VIEW_LABELS[n].lower() for n in masks).rsplit(", ", 1))
+    return [Note(True, f"Looks good: {names} clearly cut out, and they match.")]

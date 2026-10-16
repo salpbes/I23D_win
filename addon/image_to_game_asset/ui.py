@@ -5,7 +5,7 @@ from pathlib import Path
 
 import bpy
 
-from . import installer, operators, preferences
+from . import installer, operators, picture_check, preferences
 from .pipeline import ORIGINALS
 from .properties import budget_tris
 
@@ -99,20 +99,21 @@ def _draw_picture_check(layout, context):
 
 
 def _draw_view_larger(row, check):
-    if check.back_cutout:
-        row.operator("i23d.view_cutout", text="Front", icon="ZOOM_IN")
-        row.operator("i23d.view_cutout", text="Back", icon="ZOOM_IN").back = True
+    if len(check.icons) > 1:
+        for name in check.icons:
+            row.operator("i23d.view_cutout", text=picture_check.VIEW_LABELS[name],
+                         icon="ZOOM_IN").view = name
     else:
         row.operator("i23d.view_cutout", icon="ZOOM_IN")
 
 
 def _draw_cutout(layout, check):
-    if check.icon_id and check.back_icon_id:
+    if len(check.icons) > 1:
         row = layout.row()
-        for label, icon in (("Front", check.icon_id), ("Back", check.back_icon_id)):
+        for name, icon in check.icons.items():
             col = row.column(align=True)
-            col.label(text=label)
-            col.template_icon(icon_value=icon, scale=5)
+            col.label(text=picture_check.VIEW_LABELS[name])
+            col.template_icon(icon_value=icon, scale=5 if len(check.icons) == 2 else 3.4)
     elif check.icon_id:
         col = layout.column()
         col.template_icon(icon_value=check.icon_id, scale=9)
@@ -139,11 +140,21 @@ class I23D_PT_main(_Base, bpy.types.Panel):
         col = box.column(align=True)
         col.enabled = not s.is_running
         if s.views == "FRONT_BACK":
-            col.label(text="Front, or front and back side by side:")
+            col.label(text="Front, or all views side by side:")
         col.prop(s, "image_path", text="")
         if s.views == "FRONT_BACK":
-            col.label(text="Back (only if it's a separate picture):")
+            col.label(text="Back (if it's a picture of its own):")
             col.prop(s, "back_path", text="")
+            col.label(text="Side (optional, if a picture of its own):")
+            col.prop(s, "side_path", text="")
+            row = col.row(align=True)
+            row.label(text="Side picture: front points")
+            row.prop(s, "side_faces", expand=True)
+            check = operators.picture_check_for(context)
+            if check and any(v["name"] in ("left", "right") for v in check.views):
+                col.label(text="Length: measured from the side", icon="CHECKMARK")
+            else:
+                col.prop(s, "length", text="Length (x width)")
             col.separator()
         col.prop(s, "asset_name")
         if s.views == "FRONT_BACK":

@@ -30,6 +30,10 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 WORKFLOW = Path(__file__).with_name("workflows") / "trellis2_image_to_glb.json"
 DEFAULT_URL = "http://127.0.0.1:8188"
 DETAILS = ("1024", "1536")
+VIEW_AZIMUTHS = {"front": 0.0, "left": 90.0, "back": 180.0, "right": 270.0}  # Pixal3D's orbit rig
+RIG_PAD = 1.1        # Pixal3D's rig: the object's longest side spans 1/1.1 of every view
+CROP_SIZE = 1024     # the cut-outs the AI sees
+MAX_CROP_PAD = 2.0   # ImageCropToMask's limit; more margin goes on a black canvas (_frame)
 QUIET_WARNING_SECONDS = {"1024": 10 * 60, "1536": 20 * 60}
 SERVER_START_TIMEOUT = 240  # first start unpacks caches; later starts take ~20 s
 
@@ -155,12 +159,11 @@ def upload_image(url: str, image: str | os.PathLike) -> str:
 
 
 def build_prompt(workflow: dict, image_name: str, *, seed: int, detail: str, prefix: str,
-                 back: str | None = None, split: tuple[int, int, int] | None = None) -> dict:
+                 views: list[dict] | None = None) -> dict:
     """The workflow with this run's picture, seed, detail and output name filled in.
 
-    Front + back pictures (Pixal3D multi-view): back is the ComfyUI name of a separate back
-    picture, or split = (width, height, x) when image_name holds both side by side, the back
-    starting at x."""
+    views (front + back pictures, Pixal3D multi-view): see _add_views. Without them the run is
+    TRELLIS.2 from the one picture."""
     if detail not in DETAILS:
         raise ValueError(f"Detail must be one of {DETAILS}")
     prompt = copy.deepcopy(workflow["prompt"])
@@ -174,8 +177,8 @@ def build_prompt(workflow: dict, image_name: str, *, seed: int, detail: str, pre
             inputs["target_resolution"] = int(detail)
         elif kind == "Save3DAdvanced":
             inputs["filename_prefix"] = prefix
-    if back or split:
-        _use_front_back(prompt, workflow, back, split)
+    if views:
+        _use_views(prompt, workflow, views)
     return prompt
 
 
@@ -191,51 +194,82 @@ def _add_node(prompt: dict, class_type: str, inputs: dict, like: str) -> str:
     return nid
 
 
-def split_boxes(split: tuple[int, int, int]) -> tuple[tuple, tuple]:
-    """(x, y, width, height) of the front (left part) and the back (right part)."""
-    width, height, x = split
-    return (0, 0, x, height), (x, 0, width - x, height)
+def _repoint(prompt: dict, old: list, new: list, skip=()) -> None:
+    """Every input that reads `old` reads `new` instead (except in the nodes `skip`)."""
+    for nid, node in prompt.items():
+        if nid not in skip:
+            node["inputs"] = {k: new if v == old else v for k, v in node["inputs"].items()}
 
 
-def _add_back(prompt: dict, back: str | None, split: tuple[int, int, int] | None) -> tuple[str, str]:
-    """Give the prompt a back picture next to its front: removed background, cropped the same way.
-    Returns the ids of the back's RemoveBackground (its mask) and ImageCropToMask nodes."""
+def _frame(prompt: dict, crop: str, pad: float) -> list:
+    """Frame a cut-out so the object's outline spans 1/pad of the picture. Beyond what
+    ImageCropToMask allows, the cut-out is made smaller and set on a black canvas.
+    Returns the framed picture's link."""
+    inputs = prompt[crop]["inputs"]
+    if pad <= MAX_CROP_PAD:
+        inputs.update(pad_factor=round(pad, 4), width=CROP_SIZE, height=CROP_SIZE)
+        return [crop, 0]
+    size = max(64, int(round(CROP_SIZE * MAX_CROP_PAD / pad / 8)) * 8)
+    inputs.update(pad_factor=MAX_CROP_PAD, width=size, height=size)
+    canvas = _add_node(prompt, "EmptyImage",
+                       {"width": CROP_SIZE, "height": CROP_SIZE, "batch_size": 1, "color": 0}, crop)
+    at = (CROP_SIZE - size) // 2
+    return [_add_node(prompt, "ImageCompositeMasked",
+                      {"destination": [canvas, 0], "source": [crop, 0], "x": at, "y": at,
+                       "resize_source": False}, crop), 0]
+
+
+def _add_views(prompt: dict, views: list[dict]) -> dict[str, tuple[list, list]]:
+    """Give the prompt one background removal and cut-out per view. A view is a dict:
+    name ("front" first, then "back", "left" or "right"), image (its ComfyUI picture name; None =
+    the run's own picture), box ((x, y, width, height) of the part of the picture it is in, or
+    None for all of it) and pad (framing: the object's outline spans 1/pad of the cut-out).
+    Returns each view's mask link and framed cut-out link."""
     load, rb, crop = _find(prompt, "LoadImage"), _find(prompt, "RemoveBackground"), _find(prompt, "ImageCropToMask")
-    back_src = [load, 0]
-    if back:
-        back_src = [_add_node(prompt, "LoadImage", {"image": back}, load), 0]
-    elif split:
-        front_box, back_box = split_boxes(split)
-        cut = lambda box: _add_node(prompt, "ImageCrop", dict(zip(("x", "y", "width", "height"), box),
-                                                              image=[load, 0]), load)
-        front = cut(front_box)
-        for nid, node in prompt.items():  # the front's steps now start from the left part
-            if nid != front:
-                node["inputs"] = {k: [front, 0] if v == [load, 0] else v for k, v in node["inputs"].items()}
-        back_src = [cut(back_box), 0]
-    mask = _add_node(prompt, "RemoveBackground",
-                     {"bg_removal_model": prompt[rb]["inputs"]["bg_removal_model"], "image": back_src}, rb)
-    cutout = _add_node(prompt, "ImageCropToMask",
-                       {**prompt[crop]["inputs"], "images": back_src, "masks": [mask, 0]}, crop)
-    return mask, cutout
+    crop_inputs = dict(prompt[crop]["inputs"])
+    box_node = lambda src, box: _add_node(prompt, "ImageCrop", dict(zip(("x", "y", "width", "height"), box),
+                                                                      image=src), load)
+    front = views[0]
+    assert front["name"] == "front", "the first view must be the front"
+    if front.get("image"):
+        prompt[load]["inputs"]["image"] = front["image"]
+    if front.get("box"):
+        part = box_node([load, 0], front["box"])
+        _repoint(prompt, [load, 0], [part, 0], skip=(part,))  # the front's steps start from its part
+    framed = _frame(prompt, crop, front.get("pad", RIG_PAD))
+    if framed != [crop, 0]:
+        _repoint(prompt, [crop, 0], framed, skip=(framed[0],))
+    refs = {"front": ([rb, 0], framed)}
+    for view in views[1:]:
+        src = [_add_node(prompt, "LoadImage", {"image": view["image"]}, load), 0] if view.get("image") else [load, 0]
+        if view.get("box"):
+            src = [box_node(src, view["box"]), 0]
+        mask = _add_node(prompt, "RemoveBackground",
+                         {"bg_removal_model": prompt[rb]["inputs"]["bg_removal_model"], "image": src}, rb)
+        cut = _add_node(prompt, "ImageCropToMask", {**crop_inputs, "images": src, "masks": [mask, 0]}, crop)
+        refs[view["name"]] = ([mask, 0], _frame(prompt, cut, view.get("pad", RIG_PAD)))
+    return refs
 
 
-def _use_front_back(prompt: dict, workflow: dict, back, split) -> None:
-    """Swap TRELLIS.2's one-picture model for Pixal3D's multi-view one, fed the front and back.
-    The cut-outs it sees come back as previews (marked i23d_view) for painting them onto the model."""
+def _shown(prompt: dict, image: list) -> str:
+    """The PreviewImage node showing `image` (added if there is none)."""
+    found = next((k for k, n in prompt.items() if n["class_type"] == "PreviewImage"
+                  and n["inputs"].get("images") == image), None)
+    return found or _add_node(prompt, "PreviewImage", {"images": image}, image[0])
+
+
+def _use_views(prompt: dict, workflow: dict, views: list[dict]) -> None:
+    """Swap TRELLIS.2's one-picture model for Pixal3D's multi-view one, fed every view. The
+    cut-outs it sees come back as previews (marked i23d_view) for painting them onto the model."""
     fb = workflow["front_back"]
-    front_cutout = _find(prompt, "ImageCropToMask")
-    _, back_cutout = _add_back(prompt, back, split)
-    for view, cutout in (("front", front_cutout), ("back", back_cutout)):
-        shown = next((k for k, n in prompt.items() if n["class_type"] == "PreviewImage"
-                      and n["inputs"].get("images") == [cutout, 0]), None)
-        shown = shown or _add_node(prompt, "PreviewImage", {"images": [cutout, 0]}, cutout)
-        prompt[shown]["_meta"]["i23d_view"] = view
+    refs = _add_views(prompt, views)
+    for name, (_, image) in refs.items():
+        prompt[_shown(prompt, image)]["_meta"]["i23d_view"] = name
     prompt[_find(prompt, "UNETLoader")]["inputs"]["unet_name"] = fb["unet"]
     node = prompt[_find(prompt, "Trellis2Conditioning")]
     node["class_type"] = "Pixal3DMultiViewConditioning"
     node["inputs"] = {"clip_vision_model": node["inputs"]["clip_vision_model"], "fov": fb["fov"],
-                      "front": node["inputs"]["image"], "back": [back_cutout, 0]}
+                      **{name: image for name, (_, image) in refs.items()}}
 
 
 def _upstream(prompt: dict, outputs) -> dict:
@@ -250,11 +284,11 @@ def _upstream(prompt: dict, outputs) -> dict:
     return {nid: node for nid, node in prompt.items() if nid in keep}
 
 
-def build_cutout_prompt(workflow: dict, image_name: str, back: str | None = None,
-                        split: tuple[int, int, int] | None = None) -> tuple[dict, tuple[str, ...]]:
+def build_cutout_prompt(workflow: dict, image_name: str,
+                        views: list[dict] | None = None) -> tuple[dict, list[tuple[str, str, str]]]:
     """Only the workflow's first steps: remove the background and crop to the object, exactly as
-    TRELLIS.2 gets it. Returns the prompt and the ids of the nodes that show the cut-out and its
-    mask (then the back's cut-out and mask, for front + back pictures; see build_prompt)."""
+    the AI gets it. Returns the prompt and, per view, (name, cut-out preview node, mask preview
+    node); without views just the front."""
     prompt = copy.deepcopy(workflow["prompt"])
     for node in prompt.values():
         if node["class_type"] == "LoadImage":
@@ -263,12 +297,13 @@ def build_cutout_prompt(workflow: dict, image_name: str, back: str | None = None
     cutout = next(k for k, n in prompt.items()
                   if n["class_type"] == "PreviewImage" and n["inputs"].get("images") == [crop, 0])
     mask = _find(prompt, "MaskPreview")
-    outputs = [cutout, mask]
-    if back or split:
-        back_mask, back_cutout = _add_back(prompt, back, split)
-        outputs += [_add_node(prompt, "PreviewImage", {"images": [back_cutout, 0]}, cutout),
-                    _add_node(prompt, "MaskPreview", {"mask": [back_mask, 0]}, mask)]
-    return _upstream(prompt, outputs), tuple(outputs)
+    outputs = [("front", cutout, mask)]
+    if views:
+        refs = _add_views(prompt, views)
+        outputs = [("front", _shown(prompt, refs["front"][1]), mask)]
+        outputs += [(name, _shown(prompt, image), _add_node(prompt, "MaskPreview", {"mask": m}, mask))
+                    for name, (m, image) in refs.items() if name != "front"]
+    return _upstream(prompt, [n for _, c, m in outputs for n in (c, m)]), outputs
 
 
 def describe_prompt_error(err: dict) -> str:
@@ -461,11 +496,12 @@ class TrellisJob:
 
     def __init__(self, *, url: str, image, out_base, seed: int = 42, detail: str = "1024",
                  log_path=None, server: ComfyServer | None = None, workflow: dict | None = None,
-                 back=None, split: tuple[int, int, int] | None = None):
+                 views: list[dict] | None = None):
         self.url = url.rstrip("/")
         self.image = Path(image).expanduser()
-        self.back = Path(back).expanduser() if back else None  # front + back pictures (Pixal3D)
-        self.split = split  # (width, height, x): image shows the front and, from x on, the back
+        # Front + back (Pixal3D): as for build_prompt, but each view's picture is a file on this
+        # PC ("file"; None = image) that the job uploads.
+        self.views = views
         self.out_base = Path(out_base)
         self.seed, self.detail = int(seed), str(detail)
         self.log_path = Path(log_path) if log_path else None
@@ -541,18 +577,26 @@ class TrellisJob:
                 self._log.close()
                 self._log = None
 
-    def _upload_back(self) -> str | None:
-        if not self.back:
+    def _comfy_views(self) -> list[dict] | None:
+        """The views with their own pictures uploaded (see build_prompt)."""
+        if not self.views:
             return None
-        name = upload_image(self.url, self.back)
-        self._say(f"back picture {self.back} -> {name}")
-        return name
+        out = []
+        for view in self.views:
+            view = dict(view)
+            path = view.pop("file", None)
+            if path:
+                view["image"] = upload_image(self.url, path)
+            self._say(f"{view['name']} view: {path or self.image}"
+                      + (f", part {view['box']}" if view.get("box") else "")
+                      + f", framing {view.get('pad', RIG_PAD):.2f}")
+            out.append(view)
+        return out
 
     def _make_prompt(self, image_name: str) -> dict:
-        self._say(f"picture {self.image} -> {image_name}, seed {self.seed}, detail {self.detail}"
-                  + (f", front and back side by side (back from x={self.split[2]})" if self.split else ""))
+        self._say(f"picture {self.image} -> {image_name}, seed {self.seed}, detail {self.detail}")
         return build_prompt(self.workflow, image_name, seed=self.seed, detail=self.detail,
-                            prefix=f"i23d/{self.out_base.name}", back=self._upload_back(), split=self.split)
+                            prefix=f"i23d/{self.out_base.name}", views=self._comfy_views())
 
     def _ensure_server(self) -> None:
         if server_up(self.url):
@@ -585,6 +629,12 @@ class TrellisJob:
             except ValueError:
                 detail = f"HTTP {exc.code}"
             raise RuntimeError(f"ComfyUI rejected the job - {detail}") from None
+        if answer.get("node_errors"):  # accepted, but ComfyUI will skip what depends on these nodes
+            try:
+                _post_json(self.url, "/queue", {"delete": [answer["prompt_id"]]})
+            except OSError:
+                pass
+            raise RuntimeError(f"ComfyUI rejected part of the job - {describe_prompt_error(answer)}")
         self._say(f"queued {answer['prompt_id']}")
         return answer["prompt_id"]
 
@@ -664,10 +714,9 @@ class TrellisJob:
                 pictures[view] = self._fetch(images[0], self.out_base.with_name(f"{self.out_base.name}_{view}_view.png"))
         if len(pictures) != len(views) or not views:
             return
-        crop = self._prompt[_find(self._prompt, "ImageCropToMask")]["inputs"]
         doc = {"about": "Cameras of a Pixal3D multi-view run (Image to Game Asset add-on)",
-               "fov": self.workflow["front_back"]["fov"], "pad": crop["pad_factor"],
-               "views": [{"name": v, "azimuth": {"front": 0.0, "back": 180.0}[v], "picture": p.name}
+               "fov": self.workflow["front_back"]["fov"], "pad": RIG_PAD,
+               "views": [{"name": v, "azimuth": VIEW_AZIMUTHS[v], "picture": p.name}
                          for v, p in pictures.items()]}
         path = self.out_base.with_name(f"{self.out_base.name}_views.json")
         path.write_text(json.dumps(doc, indent=1), encoding="utf-8")
@@ -703,25 +752,22 @@ class CutoutJob(TrellisJob):
     """Only the first steps of a run: the picture with its background removed, cropped the way
     TRELLIS.2 will see it, plus its mask. Takes seconds once ComfyUI is up.
 
-    Read .cutout_path and .mask_path (PNG files) when it ends without .error; with a back picture
-    (back or split, as for TrellisJob) also .back_cutout_path and .back_mask_path.
+    Read .cutout_path and .mask_path (PNG files) when it ends without .error; with views (as for
+    TrellisJob) .view_files has every view's (cut-out, mask).
     """
 
-    SUFFIXES = ("_cutout.png", "_mask.png", "_back_cutout.png", "_back_mask.png")
-
     def __init__(self, *, url: str, image, out_base, log_path=None, server: ComfyServer | None = None,
-                 workflow: dict | None = None, back=None, split: tuple[int, int, int] | None = None):
+                 workflow: dict | None = None, views: list[dict] | None = None):
         super().__init__(url=url, image=image, out_base=out_base, log_path=log_path, server=server,
-                         workflow=workflow, back=back, split=split)
+                         workflow=workflow, views=views)
         self.cutout_path: str | None = None
         self.mask_path: str | None = None
-        self.back_cutout_path: str | None = None
-        self.back_mask_path: str | None = None
-        self._nodes: tuple[str, ...] = ()
+        self.view_files: dict[str, tuple[str, str]] = {}
+        self._nodes: list[tuple[str, str, str]] = []
 
     def _make_prompt(self, image_name: str) -> dict:
         self._say(f"cut-out of {self.image} -> {image_name}")
-        prompt, self._nodes = build_cutout_prompt(self.workflow, image_name, self._upload_back(), self.split)
+        prompt, self._nodes = build_cutout_prompt(self.workflow, image_name, self._comfy_views())
         return prompt
 
     def _download(self, entry: dict | None = None) -> None:
@@ -729,12 +775,15 @@ class CutoutJob(TrellisJob):
         if entry is None:
             entry = _get_json(self.url, f"/history/{self.prompt_id}", timeout=30)[self.prompt_id]
         outputs = entry.get("outputs", {})
-        paths = []
-        for node, suffix in zip(self._nodes, self.SUFFIXES):
-            images = outputs.get(node, {}).get("images", [])
-            if not images:
-                raise RuntimeError("ComfyUI finished but made no cut-out.")
-            paths.append(str(self._fetch(images[0], self.out_base.with_name(self.out_base.name + suffix))))
-        self.cutout_path, self.mask_path, self.back_cutout_path, self.back_mask_path = paths + [None] * (4 - len(paths))
+        for name, *nodes in self._nodes:
+            files = []
+            for node, kind in zip(nodes, ("cutout", "mask")):
+                images = outputs.get(node, {}).get("images", [])
+                if not images:
+                    raise RuntimeError("ComfyUI finished but made no cut-out.")
+                suffix = f"_{kind}.png" if name == "front" else f"_{name}_{kind}.png"
+                files.append(str(self._fetch(images[0], self.out_base.with_name(self.out_base.name + suffix))))
+            self.view_files[name] = tuple(files)
+        self.cutout_path, self.mask_path = self.view_files["front"]
         self.fraction, self.label = 1.0, "Cut-out ready"
         self._say(f"saved {self.cutout_path}")

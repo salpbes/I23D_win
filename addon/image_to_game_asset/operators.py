@@ -10,7 +10,7 @@ from pathlib import Path
 import bpy
 import bpy.utils.previews
 import numpy as np
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, StringProperty
 
 from . import baking, installer, picture_check, pipeline, preferences, trellis_runner as tr
 
@@ -98,8 +98,10 @@ class PictureCheck:
     notes: list = field(default_factory=list)   # picture_check.Note
     error: str = ""
     icon_id: int = 0                            # the cut-out, for template_icon
-    back_icon_id: int = 0                       # the back's cut-out (front + back pictures)
     key: tuple = ()                             # what was checked (see _check_key)
+    views: list = field(default_factory=list)   # front + back: the views checked (views_input)
+    icons: dict = field(default_factory=dict)   # front + back: each view's cut-out icon
+    sizes: dict = field(default_factory=dict)   # front + back: each view's object size (pixels)
 
     @property
     def running(self) -> bool:
@@ -109,9 +111,9 @@ class PictureCheck:
     def cutout(self) -> str | None:
         return self.job.cutout_path if self.job and not self.running and not self.error else None
 
-    @property
-    def back_cutout(self) -> str | None:
-        return self.job.back_cutout_path if self.cutout else None
+    def view_cutout(self, name: str) -> str | None:
+        files = self.job.view_files.get(name) if self.cutout else None
+        return files[0] if files else None
 
 
 _check: PictureCheck | None = None
@@ -120,8 +122,10 @@ _previews = None  # bpy.utils.previews collection holding the cut-outs shown in 
 
 def _check_key(context) -> tuple:
     s = context.scene.i23d
-    back = bpy.path.abspath(s.back_path) if s.views == "FRONT_BACK" and s.back_path else ""
-    return bpy.path.abspath(s.image_path), s.views, back
+    if s.views != "FRONT_BACK":
+        return bpy.path.abspath(s.image_path), s.views
+    return (bpy.path.abspath(s.image_path), s.views, bpy.path.abspath(s.back_path) if s.back_path else "",
+            bpy.path.abspath(s.side_path) if s.side_path else "", s.side_faces)
 
 
 def picture_check_for(context) -> PictureCheck | None:
@@ -144,22 +148,45 @@ def _image_pixels(path: str) -> np.ndarray:
         bpy.data.images.remove(img)
 
 
-def front_back_input(context, image: str) -> tuple[str | None, tuple | None, str]:
-    """For Front + back: the back picture, or where the back starts in a picture showing both
-    side by side (width, height, x). The third value is a problem to show (empty = fine)."""
+def views_input(context, image: str) -> tuple[list[dict] | None, str]:
+    """For Front + back: the views to give Pixal3D (as trellis_runner.TrellisJob takes them: name,
+    file = a picture of its own or None for the main picture, box = its part of the main picture).
+    The main picture holds the front, plus the back and side when they aren't pictures of their
+    own: side by side, in the order front, back or front, side, back. Returns (views, problem)."""
     s = context.scene.i23d
     if s.views != "FRONT_BACK":
-        return None, None, ""
-    if s.back_path:
-        back = bpy.path.abspath(s.back_path)
-        return back, None, tr.check_image(back) or ""
-    px = _image_pixels(image)
-    x = picture_check.find_split(px)
-    if x is None:
-        return None, None, ("Front + back: there is no gap between a front and a back in this picture. "
-                            "Use a picture with both side by side and some space between them, or "
-                            "choose the back as a picture of its own.")
-    return None, (px.shape[1], px.shape[0], x), ""
+        return None, ""
+    side = "left" if s.side_faces == "LEFT" else "right"   # front pointing left = its left side
+    files = {"back": bpy.path.abspath(s.back_path) if s.back_path else "",
+             side: bpy.path.abspath(s.side_path) if s.side_path else ""}
+    for path in filter(None, files.values()):
+        problem = tr.check_image(path)
+        if problem:
+            return None, problem
+    views = [{"name": "front", "file": None, "box": None}]
+    if not files["back"]:
+        px = _image_pixels(image)
+        parts = picture_check.find_views(px, most=2 if files[side] else 3)
+        if len(parts) < 2:
+            return None, ("Front + back: there is no gap between the views in this picture. Use a "
+                          "picture with the front and back (and maybe a side) next to each other with "
+                          "space between them, or choose the back as a picture of its own.")
+        names = ["front", "back"] if len(parts) == 2 else ["front", side, "back"]
+        h = px.shape[0]
+        views = [{"name": n, "file": None, "box": (x0, 0, x1 - x0, h)} for n, (x0, x1) in zip(names, parts)]
+    views += [{"name": n, "file": f, "box": None} for n, f in files.items() if f]
+    order = ["front", "back", "left", "right"]
+    return sorted(views, key=lambda v: order.index(v["name"])), ""
+
+
+def framed_views(context, check: "PictureCheck") -> tuple[list[dict], str]:
+    """The checked views with their framing (picture_check.framing), and a note on the shape."""
+    s = context.scene.i23d
+    pads, (width, length) = picture_check.framing(check.sizes, length=s.length)
+    measured = "measured from the side" if any(v["name"] in ("left", "right") for v in check.views) \
+        else "from the Length setting"
+    note = f"width {width:.2f} x height, length {length:.2f} x height ({measured})"
+    return [dict(v, pad=pads[v["name"]]) for v in check.views], note
 
 
 def start_picture_check(context) -> str:
@@ -180,23 +207,24 @@ def start_picture_check(context) -> str:
         img = bpy.data.images.load(image, check_existing=False)
         size = tuple(img.size)
         bpy.data.images.remove(img)
-        back, split, problem = front_back_input(context, image)
+        views, problem = views_input(context, image)
     except RuntimeError as exc:
         _check = PictureCheck(image=image, error=f"Blender can't read this picture ({exc}).", key=key)
         return _check.error
     if problem:
         _check = PictureCheck(image=image, error=problem, key=key)
         return problem
-    if split:  # each half is a picture of its own
-        size = (min(split[2], split[0] - split[2]), split[1])
+    boxes = [v["box"] for v in views or [] if v["box"]]
+    if boxes:  # each part is a picture of its own
+        size = (min(b[2] for b in boxes), size[1])
     notes = picture_check.picture_notes(*size)
     out_dir = pipeline.output_dir(context) / "previews"
     name = tr.sanitize_name(Path(image).stem)
     job = tr.CutoutJob(url=prefs.comfy_url, image=image, out_base=out_dir / name,
-                       log_path=out_dir / f"{name}_check_log.txt", back=back, split=split,
+                       log_path=out_dir / f"{name}_check_log.txt", views=views,
                        server=_server_for(prefs, pipeline.output_dir(context) / "comfyui_log.txt"))
     job.start()
-    _check = PictureCheck(image=image, job=job, notes=notes, key=key)
+    _check = PictureCheck(image=image, job=job, notes=notes, key=key, views=views or [])
     if not bpy.app.timers.is_registered(_watch_picture_check):
         bpy.app.timers.register(_watch_picture_check, first_interval=0.5)
     return ""
@@ -208,16 +236,21 @@ def finish_picture_check(check: PictureCheck) -> None:
     if job.error or not job.cutout_path:
         check.error = job.error or "ComfyUI made no cut-out."
         return
-    mask = _image_pixels(job.mask_path)[..., :3]
-    if job.back_mask_path:
-        check.notes = check.notes + picture_check.pair_notes(mask, _image_pixels(job.back_mask_path)[..., :3])
+    if check.views:
+        masks = {name: _image_pixels(files[1])[..., :3] for name, files in job.view_files.items()}
+        check.notes = check.notes + picture_check.views_notes(masks)
+        check.sizes = {name: picture_check.object_size(m) for name, m in masks.items()}
+        if None in check.sizes.values():
+            check.error = "One of the views has no object after background removal: " + \
+                ", ".join(n for n, v in check.sizes.items() if v is None)
     else:
-        check.notes = check.notes + picture_check.mask_notes(mask)
+        check.notes = check.notes + picture_check.mask_notes(_image_pixels(job.mask_path)[..., :3])
     if _previews is not None:
         _previews.clear()
         check.icon_id = _previews.load(job.cutout_path, job.cutout_path, "IMAGE").icon_id
-        if job.back_cutout_path:
-            check.back_icon_id = _previews.load(job.back_cutout_path, job.back_cutout_path, "IMAGE").icon_id
+        for name, (cutout, _) in job.view_files.items():  # the front's is loaded already
+            check.icons[name] = check.icon_id if cutout == job.cutout_path else \
+                _previews.load(cutout, cutout, "IMAGE").icon_id
 
 
 def _watch_picture_check():
@@ -270,7 +303,7 @@ class I23D_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         image = bpy.path.abspath(s.image_path)
-        back = split = None
+        views = None
         problem = tr.check_image(image) if s.image_path else "Choose a picture first."
         problems = [problem] if problem else []
         if not problems:
@@ -281,8 +314,21 @@ class I23D_OT_generate(bpy.types.Operator):
                 problems = [f"Front + back pictures need one more download (about {installer.FRONT_BACK_GB} "
                             "GB): press Download for Front + Back in the panel."]
             else:
-                back, split, problem = front_back_input(context, image)
-                problems = [problem] if problem else []
+                # The framing comes from the picture check (each view's outline), so that runs first.
+                check = picture_check_for(context)
+                if check is None or check.running:
+                    if check is None:
+                        problem = start_picture_check(context)
+                        if problem:
+                            problems = [problem]
+                    if not problems:
+                        self.report({"INFO"}, "Checking the pictures first (a few seconds): press "
+                                              "Generate again when the check is done.")
+                        return {"CANCELLED"}
+                elif check.error or not check.sizes:
+                    problems = [check.error or "The picture check found no views to measure."]
+                else:
+                    views, shape = framed_views(context, check)
         if not problems and not prefs.start_comfy and not tr.server_up(prefs.comfy_url):
             problems = [f"ComfyUI is not running at {prefs.comfy_url}. Start it, or turn on "
                         "'Start ComfyUI when needed' in the add-on preferences."]
@@ -299,9 +345,11 @@ class I23D_OT_generate(bpy.types.Operator):
             s.seed = random.randint(0, 2_147_483_647)
         s.last_log = str(out_dir / f"{self._name}_log.txt")
         _job = tr.TrellisJob(url=prefs.comfy_url, image=image, out_base=out_dir / self._name,
-                             seed=s.seed, detail=s.quality, log_path=s.last_log, back=back, split=split,
+                             seed=s.seed, detail=s.quality, log_path=s.last_log, views=views,
                              server=_server_for(prefs, out_dir / "comfyui_log.txt"))
         _job.start()
+        if views:
+            _job._say("shape: " + shape)
 
         s.is_running, s.progress, s.status = True, 0.0, "Starting..."
         s.last_error = s.last_result = ""
@@ -535,8 +583,8 @@ class I23D_OT_view_cutout(bpy.types.Operator):
     bl_label = "View Larger"
     bl_description = "Open the cut-out in its own window, as the AI will see it (scroll to zoom)"
 
-    back: BoolProperty(name="Back", options={"SKIP_SAVE", "HIDDEN"},
-                       description="Show the back's cut-out (front + back pictures)")
+    view: StringProperty(name="View", options={"SKIP_SAVE", "HIDDEN"},
+                         description="Which view's cut-out (front + back pictures)")
 
     @classmethod
     def poll(cls, context):
@@ -545,7 +593,7 @@ class I23D_OT_view_cutout(bpy.types.Operator):
 
     def execute(self, context):
         check = picture_check_for(context)
-        path = check.back_cutout if self.back and check.back_cutout else check.cutout
+        path = (self.view and check.view_cutout(self.view)) or check.cutout
         img = bpy.data.images.load(path, check_existing=True)
         img.reload()
         before = {w.as_pointer() for w in context.window_manager.windows}

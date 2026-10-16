@@ -31,20 +31,36 @@ assert "small (300 x 400" in pc.picture_notes(300, 400)[0].text and pc.picture_n
 
 # ---- front + back: where a side-by-side picture splits, and do the two views match
 sheet = np.ones((100, 300, 3)); sheet[20:90, 30:110] = 0.2; sheet[20:90, 190:270] = 0.3
-assert pc.find_split(sheet) == 150, pc.find_split(sheet)
-assert pc.find_split(sheet * 255) == 150, "0-255 pictures work"
-assert pc.find_split(np.ones((100, 300, 3))) is None, "nothing in the picture"
+assert pc.find_views(sheet) == [(0, 150), (150, 300)], pc.find_views(sheet)
+assert pc.find_views(sheet * 255) == [(0, 150), (150, 300)], "0-255 pictures work"
+assert pc.find_views(np.ones((100, 300, 3))) == [], "nothing in the picture"
 joined = sheet.copy(); joined[50:55, 100:200] = 0.2
-assert pc.find_split(joined) is None, "no gap between front and back"
-one = np.ones((100, 300, 3)); one[20:90, 100:200] = 0.2
-assert pc.find_split(one) is None, "one object in the middle is not front + back"
+assert pc.find_views(joined) == [(0, 300)], "no gap between front and back"
 rgba = np.zeros((100, 300, 4)); rgba[20:90, 30:110, 3] = 1; rgba[20:90, 190:270, 3] = 1
-assert pc.find_split(rgba) == 150, "transparent background"
-pair = pc.pair_notes(mask((100, 500, 200, 400)), mask((100, 500, 210, 410)))
-assert len(pair) == 1 and pair[0].good and "front and back" in pair[0].text, pair
-assert "different outlines" in " ".join(n.text for n in pc.pair_notes(mask((100, 500, 200, 400)),
-                                                                        mask((100, 300, 200, 400))))
-edge = pc.pair_notes(mask((100, 500, 200, 400)), mask((0, 500, 200, 400)))
+assert pc.find_views(rgba) == [(0, 150), (150, 300)], "transparent background"
+trio = np.ones((100, 400, 3)); trio[20:90, 20:100] = 0.2; trio[20:90, 140:300] = 0.3; trio[20:90, 330:390] = 0.4
+assert pc.find_views(trio) == [(0, 120), (120, 315), (315, 400)], pc.find_views(trio)
+assert len(pc.find_views(trio, most=2)) == 2, "at most `most` views"
+speck = sheet.copy(); speck[50:52, 140:142] = 0.2
+assert len(pc.find_views(speck)) == 2, "a speck between the views is not a view"
+assert pc.object_size(mask((100, 500, 200, 400))) == (200, 400) and pc.object_size(mask()) is None
+# framing: one shared scale, the longest side spanning 1/1.1 of every view
+pads, shape = pc.framing({"front": (500, 1000), "back": (500, 1000)})
+assert pads == {"front": 1.1, "back": 1.1}, "a person: height is the longest side"
+pads, (width, length) = pc.framing({"front": (1000, 1050), "back": (1000, 1050)}, length=2.3)
+assert abs(length - 2.3 * width) < 1e-9 and abs(pads["front"] - 1.1 * length * 1050 / 1050) < 1e-9, pads
+pads, (width, length) = pc.framing({"front": (400, 420), "back": (400, 420), "left": (960, 420)}, length=9)
+assert abs(length - 960 / 420) < 1e-9, "a side picture measures the length (the setting is ignored)"
+assert abs(pads["left"] - 1.1) < 1e-9 and pads["front"] > 2.4, pads
+assert pc.framing({"front": (100, 100)}, length=10)[0]["front"] == 4.0, "framing has a limit"
+good = pc.views_notes({"front": mask((100, 500, 200, 400)), "back": mask((100, 500, 210, 410))})
+assert len(good) == 1 and good[0].good and "front and back" in good[0].text, good
+good = pc.views_notes({"front": mask((100, 500, 200, 400)), "back": mask((100, 500, 210, 410)),
+                       "left": mask((100, 500, 100, 500))})
+assert good[0].good and "front, back and side" in good[0].text, good
+assert "different outlines" in " ".join(n.text for n in pc.views_notes(
+    {"front": mask((100, 500, 200, 400)), "back": mask((100, 300, 200, 400))}))
+edge = pc.views_notes({"front": mask((100, 500, 200, 400)), "back": mask((0, 500, 200, 400))})
 assert any(n.text.startswith("Back: The object touches") for n in edge), edge
 
 # ---- a finished check reaches the panel
@@ -67,7 +83,7 @@ class Done:  # a finished CutoutJob, with the files test_runner.py downloaded
     error, label = None, "Cut-out ready"
     cutout_path = T + "/out/previews/picture_cutout.png"
     mask_path = T + "/out/previews/picture_mask.png"
-    back_cutout_path = back_mask_path = None
+    view_files = {"front": (cutout_path, mask_path)}
     def is_running(self):
         return False
 check = ops.PictureCheck(image=bpy.path.abspath(s.image_path), job=Done(),
@@ -94,21 +110,34 @@ assert ops.picture_check_for(ctx) is check
 
 # ---- front + back input: a side-by-side picture is split, a separate back is used as it is
 img = bpy.data.images.new("sheet", 300, 100)
-img.pixels.foreach_set(np.dstack([sheet, np.ones((100, 300))]).astype(np.float32).ravel())
+img.pixels.foreach_set(np.dstack([sheet, np.ones((100, 300))])[::-1].astype(np.float32).ravel())
 img.filepath_raw, img.file_format = T + "/sheet.png", "PNG"
 img.save()
 bpy.data.images.remove(img)
 s.image_path = T + "/sheet.png"
 s.views = "FRONT_BACK"
-assert ops.front_back_input(ctx, bpy.path.abspath(s.image_path)) == (None, (300, 100, 150), "")
+views, problem = ops.views_input(ctx, bpy.path.abspath(s.image_path))
+assert not problem and views == [{"name": "front", "file": None, "box": (0, 0, 150, 100)},
+                                 {"name": "back", "file": None, "box": (150, 0, 150, 100)}], views
 s.back_path = T + "/picture.png"
-back, split, problem = ops.front_back_input(ctx, bpy.path.abspath(s.image_path))
-assert back == bpy.path.abspath(s.back_path) and split is None and not problem
-s.back_path = ""
+views, problem = ops.views_input(ctx, bpy.path.abspath(s.image_path))
+assert [(v["name"], v["file"], v["box"]) for v in views] == [("front", None, None), ("back", bpy.path.abspath(s.back_path), None)]
+s.side_path, s.side_faces = T + "/picture.png", "RIGHT"
+views, problem = ops.views_input(ctx, bpy.path.abspath(s.image_path))
+assert [v["name"] for v in views] == ["front", "back", "right"], "front pointing right = its right side"
+s.side_path, s.back_path, s.side_faces = "", "", "LEFT"
+img = bpy.data.images.new("trio", 400, 100)
+img.pixels.foreach_set(np.dstack([trio, np.ones((100, 400))])[::-1].astype(np.float32).ravel())
+img.filepath_raw, img.file_format = T + "/trio.png", "PNG"
+img.save()
+bpy.data.images.remove(img)
+s.image_path = T + "/trio.png"
+views, problem = ops.views_input(ctx, bpy.path.abspath(s.image_path))
+assert [v["name"] for v in views] == ["front", "back", "left"] and views[1]["box"][0] == 315, views
 s.image_path = T + "/picture.png"
-assert "no gap" in ops.front_back_input(ctx, bpy.path.abspath(s.image_path))[2]
+assert "no gap" in ops.views_input(ctx, bpy.path.abspath(s.image_path))[1]
 s.views = "ONE"
-assert ops.front_back_input(ctx, bpy.path.abspath(s.image_path)) == (None, None, "")
+assert ops.views_input(ctx, bpy.path.abspath(s.image_path)) == (None, "")
 s.image_path = T + "/other.png"
 assert ops.picture_check_for(ctx) is None, "a new picture needs a new check"
 assert len(bpy.data.images) == 0, "reading the mask left an image behind"

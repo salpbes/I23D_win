@@ -74,7 +74,8 @@ def kinds(prompt):
 
 one = tr.build_prompt(wf, "f.png", seed=1, detail="1024", prefix="p")
 assert "Trellis2Conditioning" in kinds(one) and "Pixal3DMultiViewConditioning" not in kinds(one)
-sheet = tr.build_prompt(wf, "sheet.png", seed=1, detail="1024", prefix="p", split=(200, 100, 120))
+sheet = tr.build_prompt(wf, "sheet.png", seed=1, detail="1024", prefix="p",
+                        views=[{"name": "front", "box": (0, 0, 120, 100)}, {"name": "back", "box": (120, 0, 80, 100)}])
 links_ok(sheet)
 assert "Trellis2Conditioning" not in kinds(sheet) and kinds(sheet).count("RemoveBackground") == 2
 assert kinds(sheet).count("ImageCropToMask") == 2 and kinds(sheet).count("LoadImage") == 1
@@ -87,13 +88,32 @@ assert sorted((c["x"], c["width"], c["height"]) for c in crops.values()) == [(0,
 load = next(k for k, n in sheet.items() if n["class_type"] == "LoadImage")
 assert {k for k, n in sheet.items() if [load, 0] in n["inputs"].values()} == set(crops), \
     "front and back steps start from their own half"
-two = tr.build_prompt(wf, "f.png", seed=1, detail="1024", prefix="p", back="b.png")
+two = tr.build_prompt(wf, "f.png", seed=1, detail="1024", prefix="p",
+                      views=[{"name": "front"}, {"name": "back", "image": "b.png"}])
 links_ok(two)
 assert sorted(n["inputs"]["image"] for n in two.values() if n["class_type"] == "LoadImage") == ["b.png", "f.png"]
 assert "ImageCrop" not in kinds(two)
-cut, nodes = tr.build_cutout_prompt(wf, "f.png", back="b.png")
+cut, nodes = tr.build_cutout_prompt(wf, "f.png", views=[{"name": "front"}, {"name": "back", "image": "b.png"}])
 links_ok(cut)
-assert len(nodes) == 4 and kinds(cut).count("MaskPreview") == 2 and "UNETLoader" not in kinds(cut)
+assert [n for n, _, _ in nodes] == ["front", "back"] and kinds(cut).count("MaskPreview") == 2
+assert "UNETLoader" not in kinds(cut)
+# a side view and framing: a long object is framed loosely so its length fits Pixal3D's box;
+# past ImageCropToMask's limit (2.0) the cut-out is set smaller on a black canvas
+three = tr.build_prompt(wf, "f.png", seed=1, detail="1024", prefix="p", views=[
+    {"name": "front", "pad": 2.5}, {"name": "back", "image": "b.png", "pad": 1.6},
+    {"name": "left", "image": "s.png", "pad": 1.1}])
+links_ok(three)
+cond = next(n for n in three.values() if n["class_type"] == "Pixal3DMultiViewConditioning")["inputs"]
+assert set(cond) == {"clip_vision_model", "fov", "front", "back", "left"}
+frames = sorted((n["inputs"]["pad_factor"], n["inputs"]["width"]) for n in three.values()
+                if n["class_type"] == "ImageCropToMask")
+assert frames == [(1.1, 1024), (1.6, 1024), (2.0, 816)], frames
+paste = next(k for k, n in three.items() if n["class_type"] == "ImageCompositeMasked")
+assert three[paste]["inputs"]["x"] == three[paste]["inputs"]["y"] == (1024 - 816) // 2
+assert cond["front"] == [paste, 0] or three[cond["front"][0]]["inputs"]["images"] == [paste, 0], \
+    "Pixal3D gets the front on its canvas"
+views_shown = {n["_meta"]["i23d_view"] for n in three.values() if n["_meta"].get("i23d_view")}
+assert views_shown == {"front", "back", "left"}
 
 # the extra model file is only asked for with front + back
 fake_comfy = W / "fb_folder"
@@ -180,7 +200,7 @@ try:
 
     # ---- picture check: only background removal + crop, and their two previews come back
     cut_prompt, cut_nodes = tr.build_cutout_prompt(tr.load_workflow(), "x.png")
-    assert len(cut_nodes) == 2
+    assert [n for n, _, _ in cut_nodes] == ["front"]
     assert {n["class_type"] for n in cut_prompt.values()} == {
         "LoadImage", "LoadBackgroundRemovalModel", "RemoveBackground", "MaskPreview", "ImageCropToMask",
         "PreviewImage"}, "the check must not run any TRELLIS.2 step"
@@ -192,26 +212,32 @@ try:
     assert job.cutout_path.endswith("picture_cutout.png") and job.mask_path.endswith("picture_mask.png")
     assert Path(job.cutout_path).read_bytes()[:4] == b"\x89PNG" and Path(job.mask_path).is_file()
     assert job.fraction == 1.0 and job.label == "Cut-out ready"
-    assert job.back_cutout_path is None and job.back_mask_path is None
+    assert list(job.view_files) == ["front"]
     print("picture check OK")
 
-    # ---- front + back pictures: a picture with both side by side (split), or two pictures
-    job = tr.CutoutJob(url=url, image=picture, out_base=out / "previews" / "pair", split=(64, 64, 30))
+    # ---- front + back pictures: views side by side in one picture, or pictures of their own
+    job = tr.CutoutJob(url=url, image=picture, out_base=out / "previews" / "pair", views=[
+        {"name": "front", "file": None, "box": (0, 0, 30, 64)}, {"name": "back", "file": None, "box": (30, 0, 34, 64)}])
     job.start()
     job.wait(20)
     assert job.error is None, job.error
-    assert job.back_cutout_path.endswith("pair_back_cutout.png") and Path(job.back_mask_path).is_file()
-    job = tr.TrellisJob(url=url, image=picture, back=picture, out_base=out / "front_back",
-                        log_path=out / "front_back_log.txt")
+    assert job.view_files["back"][0].endswith("pair_back_cutout.png") and Path(job.view_files["back"][1]).is_file()
+    assert job.view_files["front"] == (job.cutout_path, job.mask_path)
+    job = tr.TrellisJob(url=url, image=picture, out_base=out / "front_back", log_path=out / "front_back_log.txt",
+                        views=[{"name": "front", "file": None, "pad": 2.4},
+                               {"name": "back", "file": picture, "pad": 2.4},
+                               {"name": "right", "file": picture, "pad": 1.1}])
     job.start()
     job.wait(60)
     assert job.error is None and Path(job.glb_path).is_file(), job.error
-    assert "back picture" in (out / "front_back_log.txt").read_text()
+    log = (out / "front_back_log.txt").read_text()
+    assert "back view" in log and "framing 2.40" in log, log
     # the cut-outs Pixal3D saw and its cameras are kept, for painting the pictures on
     import json
     views = json.loads(Path(job.views_path).read_text())
     assert views["fov"] == 20 and views["pad"] == 1.1, views
-    assert [(v["name"], v["azimuth"]) for v in views["views"]] == [("front", 0.0), ("back", 180.0)]
+    assert sorted((v["name"], v["azimuth"]) for v in views["views"]) == \
+        [("back", 180.0), ("front", 0.0), ("right", 270.0)], views
     assert all((out / v["picture"]).read_bytes()[:4] == b"\x89PNG" for v in views["views"])
     print("front + back jobs OK")
 
